@@ -53,6 +53,7 @@ function Studio({discipline,hidden}){
   const [ahs,setAhs]=useState(MODEL_SEED.ahs);               // code -> [{rc,q}]
   const [names,setNames]=useState(MODEL_SEED.ahsnames);
   const [ovr,setOvr]=useState({});                           // project coef overrides: code -> {compIndex: qty}
+  const [addc,setAddc]=useState({});                          // project-only extra components: code -> [{rc,q,g}] (tidak menyentuh AHS Master)
   const [refs,setRefs]=useState({});                         // SBDY keterangan/sumber harga: rc -> string
   const [vendorList,setVendorList]=useState([{id:"v1",name:"Vendor A"},{id:"v2",name:"Vendor B"},{id:"v3",name:"Vendor C"}]);
   const [vprices,setVprices]=useState({});                   // rc -> { vendorId: price }
@@ -72,9 +73,14 @@ function Studio({discipline,hidden}){
     for(const cp of ahs[code]){const mt=meta[cp.rc];if(!mt)continue;t[mt.cat]+=(cp.q||0)*(prices[cp.rc]||0);}
     o[code]={...t,ur:t.m+t.l+t.q+t.s};}return o;},[ahs,prices,meta]);
   // PROJECT rate engine (overrides applied) — used by BOQ, AHS project, Top High Item
-  const projRates=useMemo(()=>{const o={};for(const code in ahs){const t={m:0,l:0,q:0,s:0};
-    ahs[code].forEach((cp,i)=>{const mt=meta[cp.rc];if(!mt)return;const qty=(ovr[code]&&ovr[code][i]!=null)?ovr[code][i]:(cp.q||0);t[mt.cat]+=qty*(prices[cp.rc]||0);});
-    o[code]={...t,ur:t.m+t.l+t.q+t.s};}return o;},[ahs,ovr,prices,meta]);
+  const projRates=useMemo(()=>{const o={};const codes=new Set([...Object.keys(ahs),...Object.keys(addc)]);
+    codes.forEach(code=>{const t={m:0,l:0,q:0,s:0};
+      (ahs[code]||[]).forEach((cp,i)=>{const mt=meta[cp.rc];if(!mt)return;const qty=(ovr[code]&&ovr[code][i]!=null)?ovr[code][i]:(cp.q||0);t[mt.cat]+=qty*(prices[cp.rc]||0);});
+      (addc[code]||[]).forEach(cp=>{const mt=meta[cp.rc];if(!mt)return;t[mt.cat]+=(cp.q||0)*(prices[cp.rc]||0);});
+      o[code]={...t,ur:t.m+t.l+t.q+t.s};});return o;},[ahs,addc,ovr,prices,meta]);
+  const addProjComp=(code,rc,q,g)=>setAddc(a=>({...a,[code]:[...(a[code]||[]),{rc,q:parseFloat(q)||0,g:g||"Tambahan (proyek)"}]}));
+  const setProjComp=(code,j,q)=>setAddc(a=>({...a,[code]:a[code].map((x,k)=>k===j?{...x,q:parseFloat(q)||0}:x)}));
+  const delProjComp=(code,j)=>setAddc(a=>{const arr=(a[code]||[]).filter((_,k)=>k!==j);const n={...a};if(arr.length)n[code]=arr;else delete n[code];return n;});
   const setOverride=(code,i,v)=>setOvr(o=>({...o,[code]:{...(o[code]||{}),[i]:parseFloat(v)||0}}));
   const resetOverride=(code,i)=>setOvr(o=>{const c={...(o[code]||{})};delete c[i];const n={...o};if(Object.keys(c).length)n[code]=c;else delete n[code];return n;});
 
@@ -143,19 +149,22 @@ function Studio({discipline,hidden}){
   // ---- per-item vendor offers ----
   const addOffer=rc=>setOffers(o=>({...o,[rc]:[...(o[rc]||[]),{n:"",p:0,d:""}]}));
   const pushOffer=(rc,n,p,d)=>setOffers(o=>({...o,[rc]:[...(o[rc]||[]),{n,p:p||0,d:d||""}]}));
+  const importOffers=list=>setOffers(o=>{const n={...o};list.forEach(({rc,name,price})=>{const arr=(n[rc]||[]).slice();const i=arr.findIndex(x=>(x.n||"").trim()===name.trim());if(i>=0)arr[i]={...arr[i],p:price};else arr.push({n:name,p:price,d:""});n[rc]=arr;});return n;});
   const setOfferName=(rc,i,n)=>setOffers(o=>({...o,[rc]:o[rc].map((x,j)=>j===i?{...x,n}:x)}));
   const setOfferPrice=(rc,i,p)=>setOffers(o=>({...o,[rc]:o[rc].map((x,j)=>j===i?{...x,p}:x)}));
   const setOfferDate=(rc,i,d)=>setOffers(o=>({...o,[rc]:o[rc].map((x,j)=>j===i?{...x,d}:x)}));
   const delOffer=(rc,i)=>setOffers(o=>({...o,[rc]:o[rc].filter((_,j)=>j!==i)}));
-  const useOffer=(rc,i)=>{const v=offers[rc]&&offers[rc][i];if(v){setPrices(p=>({...p,[rc]:v.p||0}));if((v.n||"").trim())setRefs(p=>({...p,[rc]:v.n.trim()}));}};
+  const useOffer=(rc,i)=>{const v=offers[rc]&&offers[rc][i];if(!v)return;setPrices(p=>({...p,[rc]:v.p||0}));
+    const nm=(v.n||"").trim(),dt=(v.d||"").trim();const ket=nm?(nm+(dt?(" — "+dt):"")):(dt?("Penawaran "+dt):"");
+    if(ket)setRefs(p=>({...p,[rc]:ket}));};
 
   // ---- save / load whole project as JSON ----
   const projRef=useRef();
-  function saveProject(){const blob=new Blob([JSON.stringify({discipline,catalog,meta,prices,ahs,names,ovr,refs,vendorList,vprices,vgroups,vgroupOf,vref,offers,rows,catSrc,v:3})],{type:"application/json"});
+  function saveProject(){const blob=new Blob([JSON.stringify({discipline,catalog,meta,prices,ahs,names,ovr,addc,refs,vendorList,vprices,vgroups,vgroupOf,vref,offers,rows,catSrc,v:3})],{type:"application/json"});
     const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download="rab_"+(discipline||"PROJECT")+".json";a.click();URL.revokeObjectURL(a.href);}
   function loadProject(file){const fr=new FileReader();fr.onload=e=>{try{const d=JSON.parse(e.target.result);
     if(d.catalog)setCatalog(d.catalog);if(d.meta)setMeta(d.meta);if(d.prices)setPrices(d.prices);if(d.ahs)setAhs(d.ahs);
-    if(d.names)setNames(d.names);if(d.ovr)setOvr(d.ovr);if(d.refs)setRefs(d.refs);if(d.vendorList)setVendorList(d.vendorList);if(d.vprices)setVprices(d.vprices);if(d.vgroups)setVgroups(d.vgroups);if(d.vgroupOf)setVgroupOf(d.vgroupOf);if(d.vref)setVref(d.vref);if(d.offers)setOffers(d.offers);if(d.rows)setRows(d.rows.map(r=>({...r,id:uid()})));if(d.catSrc)setCatSrc(d.catSrc+" (project)");
+    if(d.names)setNames(d.names);if(d.ovr)setOvr(d.ovr);if(d.addc)setAddc(d.addc);if(d.refs)setRefs(d.refs);if(d.vendorList)setVendorList(d.vendorList);if(d.vprices)setVprices(d.vprices);if(d.vgroups)setVgroups(d.vgroups);if(d.vgroupOf)setVgroupOf(d.vgroupOf);if(d.vref)setVref(d.vref);if(d.offers)setOffers(d.offers);if(d.rows)setRows(d.rows.map(r=>({...r,id:uid()})));if(d.catSrc)setCatSrc(d.catSrc+" (project)");
   }catch(err){alert("File project tidak valid: "+err.message);}};fr.readAsText(file);}
 
   function readMaster(file){const fr=new FileReader();fr.onload=e=>{try{
@@ -227,7 +236,8 @@ function Studio({discipline,hidden}){
   const flagged=itemRows.filter(r=>r.code==null).length;
   // total quantity of each SBDY resource consumed by the project (from AHS coef x BOQ volume, override-aware)
   const resQty=useMemo(()=>{const m={};itemRows.forEach(r=>{if(r.code==null)return;const v=parseFloat(r.vol);if(isNaN(v))return;
-    (ahs[r.code]||[]).forEach((c,i)=>{m[c.rc]=(m[c.rc]||0)+v*effQ(r.code,i,c.q||0);});});return m;},[itemRows,ahs,ovr]);
+    (ahs[r.code]||[]).forEach((c,i)=>{m[c.rc]=(m[c.rc]||0)+v*effQ(r.code,i,c.q||0);});
+    (addc[r.code]||[]).forEach(c=>{m[c.rc]=(m[c.rc]||0)+v*(c.q||0);});});return m;},[itemRows,ahs,addc,ovr]);
 
   function exportXlsx(){
     // layout mirrors imported client BOQ; UNIT RATE = value, AMOUNT = live formula (=rate*vol), TOTAL = SUM formula
@@ -288,10 +298,10 @@ function Studio({discipline,hidden}){
       </div>
 
       {tab==="boq"&&<BoqTab {...{priced,itemRows,total,matched,flagged,catalog,rates,upd,del,addRow,loadDemo,readClient,clearRows,clearCodes}}/>}
-      {tab==="ahs"&&<AhsTab {...{itemRows,ahs,meta,prices,rates:projRates,names,catByCode,ovr,setOverride,resetOverride}}/>}
+      {tab==="ahs"&&<AhsTab {...{itemRows,ahs,addc,meta,prices,rates:projRates,names,catByCode,ovr,setOverride,resetOverride,addProjComp,setProjComp,delProjComp}}/>}
       {tab==="ahsm"&&<AhsMasterTab {...{ahs,setQty,setGroup,addComponent,delComponent,addAhsItem,meta,prices,rates,names,catByCode,ahsmRef,readAhsM,dlTemplate,clearAhs}}/>}
       {tab==="sbdy"&&<SbdyTab {...{meta,prices,setPrices,addResource,delResource,refs,setRefs,resQty,sbdyRef,readSbdy,dlTemplate,clearSbdy}}/>}
-      {tab==="vendor"&&<VendorTab {...{meta,prices,setPrices,resQty,offers,addOffer,pushOffer,setOfferName,setOfferPrice,setOfferDate,delOffer,useOffer,vgroups,setVgroups,vgroupOf,setVgroupOf}}/>}
+      {tab==="vendor"&&<VendorTab {...{meta,prices,setPrices,resQty,offers,addOffer,pushOffer,importOffers,setOfferName,setOfferPrice,setOfferDate,delOffer,useOffer,vgroups,setVgroups,vgroupOf,setVgroupOf}}/>}
       {tab==="top"&&<TopTab {...{itemRows,ahs,meta,prices,rates:projRates,names,catByCode,effQ,refs}}/>}
     </div>
   </div>;
@@ -415,15 +425,17 @@ function BoqRow({r,idx,grid,catalog,rates,upd,del}){
 }
 
 /* ---------- AHS TAB (project view — follows BOQ client volumes) ---------- */
-function AhsTab({itemRows,ahs,meta,prices,rates,names,catByCode,ovr,setOverride,resetOverride}){
+function AhsTab({itemRows,ahs,addc,meta,prices,rates,names,catByCode,ovr,setOverride,resetOverride,addProjComp,setProjComp,delProjComp}){
   const usage=useMemo(()=>{const m={};itemRows.forEach(r=>{if(r.code==null)return;const v=parseFloat(r.vol);if(isNaN(v))return;if(!m[r.code])m[r.code]={vol:0,n:0};m[r.code].vol+=v;m[r.code].n++;});return m;},[itemRows]);
-  const used=useMemo(()=>Object.keys(usage).map(Number).filter(c=>ahs[c]).sort((a,b)=>((rates[b]?.ur||0)*usage[b].vol)-((rates[a]?.ur||0)*usage[a].vol)),[usage,ahs,rates]);
-  const [sel,setSel]=useState(null);
-  const cur=(sel!=null&&usage[sel]!=null&&ahs[sel])?sel:used[0];
+  const used=useMemo(()=>Object.keys(usage).map(Number).filter(c=>ahs[c]||addc[c]).sort((a,b)=>((rates[b]?.ur||0)*usage[b].vol)-((rates[a]?.ur||0)*usage[a].vol)),[usage,ahs,addc,rates]);
+  const [sel,setSel]=useState(null);const [q,setQ]=useState("");
+  const cur=(sel!=null&&usage[sel]!=null&&(ahs[sel]||addc[sel]))?sel:used[0];
   if(used.length===0) return <div style={{background:COL.panel,borderRadius:16,padding:"56px 24px",textAlign:"center",boxShadow:SHADOW}}>
     <Layers size={26} color={COL.sub}/><div style={{fontFamily:FD,fontWeight:600,fontSize:16,marginTop:10}}>Belum ada AHS aktif</div>
     <div style={{color:COL.sub,fontSize:13,marginTop:6,maxWidth:460,marginInline:"auto",lineHeight:1.5}}>AHS muncul otomatis mengikuti volume <b>BOQ Client</b>. Upload atau isi BOQ di tab pertama, beri kode itemnya, lalu analisa yang terpakai akan tampil di sini. Untuk membuat analisa baru, buka tab <b>AHS Master</b>.</div></div>;
   const vol=usage[cur]?usage[cur].vol:0;const nLines=usage[cur]?usage[cur].n:0;const b=rates[cur];const amount=b?b.ur*vol:0;
+  const ql=q.trim().toLowerCase();
+  const matches=ql?Object.keys(meta).map(rc=>({rc,...meta[rc]})).filter(m=>(m.rc+" "+(m.n||"")).toLowerCase().includes(ql)).slice(0,8):[];
   return <div>
     <div style={{fontSize:12.5,color:COL.sub,marginBottom:14}}>Menampilkan <b>{used.length}</b> analisa yang dipakai BOQ client. Kode yang sama dari beberapa baris BOQ <b>dikonsolidasi jadi satu</b> dengan volume total.</div>
     <div style={{display:"grid",gridTemplateColumns:"330px 1fr",gap:18,alignItems:"start"}}>
@@ -463,9 +475,33 @@ function AhsTab({itemRows,ahs,meta,prices,rates,names,catByCode,ovr,setOverride,
             <span style={{textAlign:"right",fontFamily:FM,fontSize:11.5,color:COL.sub}}>{grp(eff*vol)}</span>
             <span style={{textAlign:"right",fontFamily:FM,fontSize:11.5,color:COL.sub}}>{rp(pr)}</span>
             <span style={{textAlign:"right",fontFamily:FM,fontSize:12,fontWeight:500}}>{rp(eff*vol*pr)}</span>
-            <span style={{textAlign:"right",fontFamily:FM,fontSize:12,fontWeight:600,color:COL.steel}}>{rp(eff*pr)}</span></div>);});return out;})()}
+            <span style={{textAlign:"right",fontFamily:FM,fontSize:12,fontWeight:600,color:COL.steel}}>{rp(eff*pr)}</span></div>);});
+            (addc[cur]||[]).forEach((c,j)=>{const mt=meta[c.rc]||{};const pr=prices[c.rc]||0;
+              if(j===0)out.push(<div key="addh" style={{padding:"7px 12px",background:"#E7F6F1",borderBottom:`1px solid ${COL.line}`,fontFamily:FM,fontSize:10,letterSpacing:.6,textTransform:"uppercase",color:COL.teal,fontWeight:600}}>Tambahan khusus proyek (tidak mengubah AHS Master)</div>);
+              out.push(<div key={"a"+j} style={{display:"grid",gridTemplateColumns:"80px 1fr 38px 84px 76px 74px 96px 82px",gap:6,padding:"6px 12px",borderBottom:`1px solid ${COL.line}`,alignItems:"center",background:"#FAFEFC"}} className="trow">
+                <span style={{fontFamily:FM,fontSize:11,color:CATCOL[mt.cat]||COL.sub}}>{c.rc}</span>
+                <span style={{fontSize:11.5,lineHeight:1.2}}>{mt.n}</span>
+                <span style={{fontSize:11,color:COL.sub}}>{mt.u}</span>
+                <NumInput value={c.q} onChange={v=>setProjComp(cur,j,v)} style={{border:`1px solid ${COL.teal}`,borderRadius:6,padding:"4px 5px",textAlign:"right",fontFamily:FM,fontSize:11.5,width:"100%",color:COL.teal,fontWeight:600,background:"#F3FBF8"}}/>
+                <span style={{textAlign:"right",fontFamily:FM,fontSize:11.5,color:COL.sub}}>{grp(c.q*vol)}</span>
+                <span style={{textAlign:"right",fontFamily:FM,fontSize:11.5,color:COL.sub}}>{rp(pr)}</span>
+                <span style={{textAlign:"right",fontFamily:FM,fontSize:12,fontWeight:500}}>{rp(c.q*vol*pr)}</span>
+                <span style={{display:"flex",justifyContent:"flex-end",alignItems:"center",gap:5}}><span style={{fontFamily:FM,fontSize:12,fontWeight:600,color:COL.teal}}>{rp(c.q*pr)}</span><button onClick={()=>delProjComp(cur,j)} title="hapus" style={{border:"none",background:"none",cursor:"pointer",color:COL.sub,padding:0,display:"flex"}}><X size={12}/></button></span></div>);});
+            return out;})()}
         </div>
         <div style={{fontSize:11.5,color:COL.sub,marginTop:8}}><b>Qty</b> = koef × volume BOQ · <b>Subtotal</b> = Qty × harga · <b>Adopt</b> = koef × harga (biaya per unit pekerjaan). Koef bisa di-<b>override khusus proyek</b> (<span style={{color:COL.amber}}>oranye</span>) tanpa mengubah AHS Master — klik × untuk reset.</div>
+        <div style={{marginTop:12,background:COL.panel,border:`1px dashed ${COL.teal}`,borderRadius:12,padding:"12px 14px",boxShadow:SHADOW}}>
+          <div style={{fontSize:12.5,fontWeight:600,color:COL.teal,marginBottom:3,display:"flex",alignItems:"center",gap:6}}><Plus size={14}/>Tambah sumber daya (khusus proyek)</div>
+          <div style={{fontSize:11.5,color:COL.sub,marginBottom:8}}>Menambah SD hanya ke analisa <b>{cur}</b> di proyek ini — <b>tidak</b> mengubah AHS Master. Koef default 1, bisa diedit di tabel (warna teal). SD harus sudah ada di SBDY.</div>
+          <input value={q} onChange={e=>setQ(e.target.value)} placeholder="cari kode / nama sumber daya…" style={{border:`1px solid ${COL.line}`,borderRadius:8,padding:"7px 10px",fontSize:12.5,width:"100%",marginBottom:q.trim()?8:0}}/>
+          {q.trim()&&<div style={{maxHeight:220,overflow:"auto",display:"flex",flexDirection:"column",gap:4}}>
+            {matches.length?matches.map(m=><div key={m.rc} onClick={()=>{addProjComp(cur,m.rc,1,"Tambahan (proyek)");setQ("");}} className="sugg" style={{display:"grid",gridTemplateColumns:"82px 1fr 56px 64px",gap:8,alignItems:"center",padding:"6px 10px",borderRadius:8,cursor:"pointer",border:`1px solid ${COL.line}`}}>
+              <span style={{fontFamily:FM,fontSize:11,color:CATCOL[m.cat]||COL.sub}}>{m.rc}</span>
+              <span style={{fontSize:12,lineHeight:1.2}}>{m.n}</span>
+              <span style={{fontSize:11,color:COL.sub}}>{m.u}</span>
+              <span style={{fontSize:10.5,color:COL.teal,textAlign:"right",fontFamily:FM,fontWeight:600}}>+ tambah</span></div>):<div style={{fontSize:12,color:COL.sub,padding:6}}>Tidak ada SD cocok di SBDY. Tambahkan dulu di tab SBDY bila perlu.</div>}
+          </div>}
+        </div>
       </div>:<div style={{color:COL.sub,padding:30}}>Pilih analisa di kiri.</div>}</div>
     </div></div>;
 }
@@ -622,7 +658,7 @@ function SbdyTab({meta,prices,setPrices,addResource,delResource,refs,setRefs,res
       </div></div></div>;
 }
 /* ---------- VENDOR / PRICE COMPARISON TAB ---------- */
-function VendorTab({meta,prices,setPrices,resQty,offers,addOffer,pushOffer,setOfferName,setOfferPrice,setOfferDate,delOffer,useOffer,vgroups,setVgroups,vgroupOf,setVgroupOf}){
+function VendorTab({meta,prices,setPrices,resQty,offers,addOffer,pushOffer,importOffers,setOfferName,setOfferPrice,setOfferDate,delOffer,useOffer,vgroups,setVgroups,vgroupOf,setVgroupOf}){
   const [f,setF]=useState("");const [vf,setVf]=useState("vol");const fileRef=useRef();const pend=useRef("");const [selV,setSelV]=useState(null);
   const all=useMemo(()=>Object.keys(meta).map(k=>({rc:k,...meta[k]})).sort((a,b)=>(resQty[b]||0)-(resQty[a]||0)),[meta,resQty]);
   const toks=f.toLowerCase().split(/\s+/).filter(Boolean);
@@ -643,20 +679,32 @@ function VendorTab({meta,prices,setPrices,resQty,offers,addOffer,pushOffer,setOf
   const setGroupOf=(rc,name)=>setVgroupOf(m=>({...m,[rc]:name}));
   // group ranking (total terpakai per kelompok)
   const groupRank=useMemo(()=>vgroups.map(g=>{let total=0,items=0;Object.keys(meta).forEach(rc=>{if(vgroupOf[rc]===g){items++;total+=(prices[rc]||0)*(resQty[rc]||0);}});return{g,total,items};}).sort((a,b)=>b.total-a.total),[vgroups,vgroupOf,meta,prices,resQty]);
-  // bulk upload one vendor's quote -> adds an offer (name + price) to each matched SD
-  function readQuote(file,name){const fr=new FileReader();fr.onload=ev=>{try{
+  // WIDE upload: Kode | Nama | Unit | Kategori | <Vendor A> | <Vendor B> | ... (kolom vendor = nama vendor)
+  // upsert tiap (kode, vendor) yang terisi; bisa di-upload berkala, hanya sel terisi yang di-update.
+  function readWide(file){const fr=new FileReader();fr.onload=ev=>{try{
     const isCsv=/\.csv$/i.test(file.name);const wb=XLSX.read(ev.target.result,{type:isCsv?"binary":"array"});
     const A=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{header:1,defval:null});
-    let hi=-1,ck=-1,ch=-1;for(let i=0;i<Math.min(A.length,25);i++){const c=(A[i]||[]).map(x=>x==null?"":String(x).toLowerCase());
-      const k=c.findIndex(x=>x.includes("kode")||x.includes("code"));const h=c.findIndex(x=>x.includes("harga")||x.includes("price")||x.includes("rate")||x.includes("penawaran"));
-      if(k>=0&&h>=0){hi=i;ck=k;ch=h;break;}}
-    if(hi<0){alert("Header tidak ketemu. Butuh kolom Kode dan Harga.");return;}
-    let n=0,miss=0;for(let i=hi+1;i<A.length;i++){const r=A[i]||[];const rc=r[ck]==null?"":String(r[ck]).trim();if(!rc)continue;
-      if(!meta[rc]){miss++;continue;}pushOffer(rc,name,parseNum(r[ch],true));n++;}
-    setTimeout(()=>alert(n+' penawaran "'+name+'" ditambahkan (kode cocok dengan SBDY).'+(miss?(" "+miss+" baris dilewati karena kode tidak ada di SBDY."):"")),60);
+    const KNOWN=["kode","code","nama","name","uraian","unit","satuan","kategori","kat","category","jenis"];
+    let hi=-1,ck=-1,vcols=[];
+    for(let i=0;i<Math.min(A.length,25);i++){const cells=(A[i]||[]).map(x=>x==null?"":String(x).trim());
+      const low=cells.map(x=>x.toLowerCase());const k=low.findIndex(x=>x==="kode"||x==="code"||x.includes("kode"));
+      if(k<0)continue;const vc=[];cells.forEach((h,idx)=>{const hl=h.toLowerCase();if(h&&idx!==k&&!KNOWN.some(w=>hl===w||hl.includes(w)))vc.push({idx,name:h});});
+      if(vc.length){hi=i;ck=k;vcols=vc;break;}}
+    if(hi<0){alert("Header tidak ketemu. Butuh kolom Kode + minimal satu kolom vendor (mis. VENDOR A).");return;}
+    const list=[];const seen=new Set();let miss=0;
+    for(let i=hi+1;i<A.length;i++){const r=A[i]||[];const rc=r[ck]==null?"":String(r[ck]).trim();if(!rc)continue;
+      if(!meta[rc]){miss++;continue;}
+      vcols.forEach(v=>{const cell=r[v.idx];if(cell==null||String(cell).trim()==="")return;list.push({rc,name:v.name,price:parseNum(cell,true)});seen.add(rc);});}
+    if(!list.length){alert("Tidak ada harga vendor terbaca (kode cocok dengan SBDY).");return;}
+    importOffers(list);
+    setTimeout(()=>alert(list.length+" harga vendor ter-update untuk "+seen.size+" item, dari vendor: "+vcols.map(v=>v.name).join(", ")+"."+(miss?(" "+miss+" baris dilewati (kode tak ada di SBDY)."):"")),60);
   }catch(err){alert("Gagal baca: "+err.message);}};if(/\.csv$/i.test(file.name))fr.readAsBinaryString(file);else fr.readAsArrayBuffer(file);}
-  const dlTemplate=()=>{const d=[["Kode SD","Harga"],["E2111140",185000],["E2111160",195000],["E2111110",225000]];
-    const ws=XLSX.utils.aoa_to_sheet(d);const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,"Penawaran");XLSX.writeFile(wb,"template_penawaran_vendor.xlsx");}
+  const dlTemplate=()=>{const d=[["Kode","Nama","Unit","Kategori","VENDOR A","VENDOR B","VENDOR C"],
+    ["A0001","Semen PCC 50kg","zak","Material",62500,72500,92500],
+    ["C0001","Pekerja","OH","Labor",120000,150000,190000],
+    ["D0001","Sewa Excavator","jam","Equipment",450000,450000,450000]];
+    const ws=XLSX.utils.aoa_to_sheet(d);ws["!cols"]=[{wch:10},{wch:22},{wch:7},{wch:11},{wch:12},{wch:12},{wch:12}];
+    const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,"Vendor");XLSX.writeFile(wb,"template_vendor.xlsx");}
   // sections — vendor pick (sorted by that vendor's amount), group pick, or normal grouped view
   let shown;
   if(selV){const sv=selV;const amtOf=r=>{const o=(offers[r.rc]||[]).find(o=>(o.n||"").trim()===sv);return o?((o.p||0)*(resQty[r.rc]||0)):0;};
@@ -708,7 +756,7 @@ function VendorTab({meta,prices,setPrices,resQty,offers,addOffer,pushOffer,setOf
       <span style={{textAlign:"right",fontFamily:FM,fontSize:11,color:COL.sub}}>{rp(used)}</span>
       <span style={{fontFamily:FM,fontSize:11.5,color:COL.green,fontWeight:600}}>Termurah (mix): {rp(mix)}</span></div>;};
   return <div>
-    <div style={{fontSize:12.5,color:COL.sub,marginBottom:12}}>Tiap sumber daya punya daftar vendornya sendiri — <b>nama vendor diisi per item</b> (boleh beda antar item). Sel termurah ditandai <span style={{color:COL.green}}>hijau</span>; klik <b>pakai</b> untuk menjadikannya harga terpakai di SBDY. Ringkasan di bawah me-<b>ranking</b> vendor menurut total nilai penawaran (menjumlahkan nama vendor yang sama di semua item).</div>
+    <div style={{fontSize:12.5,color:COL.sub,marginBottom:12}}>Tiap sumber daya punya daftar vendornya sendiri — <b>nama vendor diisi per item</b> (boleh beda antar item). Tambah manual lewat <b>+Vendor</b>, atau <b>Upload vendor (Excel)</b> format lebar (Kode · Nama · Unit · Kategori · kolom tiap vendor) untuk mengisi banyak item & vendor sekaligus — bisa di-upload <b>berkala</b>, hanya sel terisi yang di-update. Sel termurah ditandai <span style={{color:COL.green}}>hijau</span>; klik <b>pakai</b> untuk menjadikannya harga terpakai di SBDY. Ranking vendor & kelompok di bawah bisa diklik untuk memfilter.</div>
 
     {/* RANKING */}
     <div style={{marginBottom:14}}>
@@ -743,11 +791,9 @@ function VendorTab({meta,prices,setPrices,resQty,offers,addOffer,pushOffer,setOf
       <div style={{display:"flex",alignItems:"center",gap:5,border:`1px solid ${COL.line}`,borderRadius:10,padding:"3px 4px 3px 9px",background:COL.panel}}>
         <input value={gname} onChange={e=>setGname(e.target.value)} onKeyDown={e=>{if(e.key==="Enter")addGroup();}} placeholder="kelompok baru…" style={{border:"none",fontSize:12,width:120}}/>
         <button className="btn" onClick={addGroup} style={{padding:"5px 9px",fontSize:12,display:"flex",gap:4,alignItems:"center",color:COL.steel}}><Plus size={13}/>Buat</button></div>
-      <div style={{display:"flex",alignItems:"center",gap:5,border:`1px solid ${COL.line}`,borderRadius:10,padding:"3px 4px 3px 9px",background:COL.panel}}>
-        <input value={upName} onChange={e=>setUpName(e.target.value)} placeholder="nama vendor utk upload…" style={{border:"none",fontSize:12,width:140}}/>
-        <button className="btn" onClick={()=>{const nm=upName.trim();if(!nm)return;pend.current=nm;fileRef.current.click();}} style={{padding:"5px 9px",fontSize:12,display:"flex",gap:4,alignItems:"center",color:upName.trim()?COL.steel:COL.sub,opacity:upName.trim()?1:.5,pointerEvents:upName.trim()?"auto":"none"}}><Upload size={13}/>Upload</button></div>
+      <button className="btn" onClick={()=>fileRef.current.click()} style={{padding:"6px 11px",fontSize:12,display:"flex",gap:5,alignItems:"center",color:COL.steel}}><Upload size={13}/>Upload vendor (Excel)</button>
       <button className="btn" onClick={dlTemplate} style={{padding:"6px 11px",fontSize:12,color:COL.sub}}>Template</button>
-      <input ref={fileRef} type="file" accept=".xlsx,.xlsm,.csv" style={{display:"none"}} onChange={e=>{const fl=e.target.files[0];if(fl&&pend.current)readQuote(fl,pend.current);e.target.value="";}}/>
+      <input ref={fileRef} type="file" accept=".xlsx,.xlsm,.csv" style={{display:"none"}} onChange={e=>{const fl=e.target.files[0];if(fl)readWide(fl);e.target.value="";}}/>
     </div>
 
     {/* group chips */}
