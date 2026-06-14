@@ -46,6 +46,16 @@ const DEMO=[["Galian tanah biasa","m3",2567],["Timbunan","m3",2231],["Soil Dispo
 let _id=1;const uid=()=>_id++;
 const PREF={A:"m",C:"l",D:"q",E:"s"};const TAG={LM:"m",LB:"l",EQ:"q",SC:"s"};
 
+class ErrorBoundary extends React.Component{
+  constructor(p){super(p);this.state={err:null};}
+  static getDerivedStateFromError(err){return {err};}
+  componentDidUpdate(prev){if(prev.tab!==this.props.tab&&this.state.err)this.setState({err:null});}
+  render(){if(this.state.err)return <div style={{background:COL.panel,borderRadius:16,padding:"36px 26px",boxShadow:SHADOW}}>
+    <div style={{display:"flex",gap:8,alignItems:"center",color:COL.red,fontWeight:600,fontFamily:FD,fontSize:15}}><AlertTriangle size={18}/>Terjadi error saat menampilkan tab ini</div>
+    <div style={{color:COL.sub,fontSize:13,marginTop:8,lineHeight:1.5,maxWidth:560}}>Bagian lain aplikasi tetap aman — pindah ke tab lain lalu kembali untuk mencoba ulang. Bila terus terjadi, kirim detail teknis di bawah ke pengembang:</div>
+    <pre style={{marginTop:10,background:"#FBF1F1",border:"1px solid #F3D6D6",borderRadius:8,padding:"10px 12px",fontFamily:FM,fontSize:11.5,color:COL.red,whiteSpace:"pre-wrap",overflow:"auto",maxHeight:260}}>{String((this.state.err&&(this.state.err.stack||this.state.err.message))||this.state.err)}</pre>
+  </div>;return this.props.children;}
+}
 function Studio({discipline,hidden}){
   const [catalog,setCatalog]=useState(CATALOG_SEED);
   const [meta,setMeta]=useState(MODEL_SEED.sbdy);            // code -> {n,u,cat}
@@ -298,12 +308,14 @@ function Studio({discipline,hidden}){
           borderRadius:9,boxShadow:on?"0 1px 3px rgba(0,0,0,.18)":"none"}}><Ic size={15} color={on?COL.steel:"rgba(255,255,255,.62)"}/>{lbl}</button>;})}
       </div>
 
+      <ErrorBoundary tab={tab}>
       {tab==="boq"&&<BoqTab {...{priced,itemRows,total,matched,flagged,catalog,rates,upd,del,addRow,loadDemo,readClient,clearRows,clearCodes}}/>}
       {tab==="ahs"&&<AhsTab {...{itemRows,ahs,addc,meta,prices,rates:projRates,names,catByCode,ovr,setOverride,resetOverride,addProjComp,setProjComp,delProjComp}}/>}
       {tab==="ahsm"&&<AhsMasterTab {...{ahs,setQty,setGroup,addComponent,delComponent,addAhsItem,meta,prices,rates,names,catByCode,ahsmRef,readAhsM,dlTemplate,clearAhs}}/>}
       {tab==="sbdy"&&<SbdyTab {...{meta,prices,setPrices,addResource,delResource,refs,setRefs,resQty,sbdyRef,readSbdy,dlTemplate,clearSbdy}}/>}
       {tab==="vendor"&&<VendorTab {...{meta,prices,setPrices,resQty,offers,addOffer,pushOffer,importOffers,setOfferName,setOfferPrice,setOfferDate,delOffer,useOffer,vgroups,setVgroups,vgroupOf,setVgroupOf}}/>}
       {tab==="top"&&<TopTab {...{itemRows,ahs,meta,prices,rates:projRates,names,catByCode,effQ,refs}}/>}
+      </ErrorBoundary>
     </div>
   </div>;
 }
