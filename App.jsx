@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useRef } from "react";
+import React, { useState, useMemo, useRef, useEffect, useCallback } from "react";
 import * as XLSX from "xlsx";
 import { Upload, Plus, Trash2, Download, Search, CheckCircle2, AlertTriangle, FileSpreadsheet, X, Layers, Boxes, Table2, Flame, Library, Scale } from "lucide-react";
 
@@ -59,7 +59,7 @@ class ErrorBoundary extends React.Component{
     <pre style={{marginTop:8,background:COL.paper,border:`1px solid ${COL.line}`,borderRadius:8,padding:"10px 12px",fontFamily:FM,fontSize:11,color:COL.sub,whiteSpace:"pre-wrap",overflow:"auto",maxHeight:200}}>{String(e&&e.stack||"")}</pre>
   </div>;}return this.props.children;}
 }
-function Studio({discipline,hidden}){
+function Studio({discipline,hidden,onReport}){
   const [catalog,setCatalog]=useState(CATALOG_SEED);
   const [meta,setMeta]=useState(MODEL_SEED.sbdy);            // code -> {n,u,cat}
   const [prices,setPrices]=useState(()=>{const o={};for(const k in MODEL_SEED.sbdy)o[k]=MODEL_SEED.sbdy[k].p;return o;});
@@ -245,6 +245,23 @@ function Studio({discipline,hidden}){
     const amt=(rt&&!isNaN(v))?rt.ur*v:null;return{...r,rt,ur:rt?rt.ur:null,amt};});
   const itemRows=priced.filter(r=>String(r.item).trim()!=="");
   const total=itemRows.reduce((s,r)=>s+(r.amt||0),0);
+  // ---- laporan ringkas untuk tampilan lintas-disiplin (Top All & Resume) ----
+  const report=useMemo(()=>{
+    const eq=(code,i,q)=>{const o=ovr[code];return (o&&o[i]!=null)?o[i]:q;};
+    const am={};
+    itemRows.forEach(r=>{if(r.code!=null&&r.amt){if(!am[r.code])am[r.code]={v:0,vol:0};am[r.code].v+=r.amt;am[r.code].vol+=parseFloat(r.vol)||0;}});
+    const ahsItems=Object.entries(am).map(([c,o])=>({code:+c,name:catByCode[+c]?.n||names[+c]||"",v:o.v,vol:o.vol,uom:catByCode[+c]?.u||"",unit:projRates[+c]?.ur||0}));
+    const sm={};
+    itemRows.forEach(r=>{if(r.code==null||!r.vol)return;const v=parseFloat(r.vol);if(isNaN(v))return;(ahs[r.code]||[]).forEach((c,i)=>{sm[c.rc]=(sm[c.rc]||0)+v*eq(r.code,i,c.q||0);});});
+    const sbdyItems=Object.entries(sm).map(([rc,qty])=>({code:rc,name:meta[rc]?.n||"",v:qty*(prices[rc]||0),vol:qty,uom:meta[rc]?.u||"",unit:prices[rc]||0})).filter(x=>x.v>0);
+    return {total,count:itemRows.filter(r=>r.code!=null&&r.amt).length,ahsItems,sbdyItems};
+  },[itemRows,ahs,projRates,catByCode,names,meta,prices,ovr,total]);
+  const sigRef=useRef("");
+  useEffect(()=>{if(!onReport)return;
+    const sig=[discipline,report.total,report.count,report.ahsItems.length,report.sbdyItems.length,
+      report.ahsItems.reduce((s,x)=>s+x.v,0).toFixed(0),report.sbdyItems.reduce((s,x)=>s+x.v,0).toFixed(0)].join("|");
+    if(sig!==sigRef.current){sigRef.current=sig;onReport(discipline,report);}
+  },[report,discipline,onReport]);
   const matched=itemRows.filter(r=>r.code!=null).length;
   const flagged=itemRows.filter(r=>r.code==null).length;
   // total quantity of each SBDY resource consumed by the project (from AHS coef x BOQ volume, override-aware)
@@ -892,11 +909,119 @@ function Bar({rank,code,name,val,max,pct,cum,color,vol,uom,unit,note}){return <d
   <div style={{marginLeft:26,marginTop:3,fontFamily:FM,fontSize:10.5,color:COL.sub}}>vol {grp(vol)} {uom} · U/P {rp(unit)}{note?<span style={{color:COL.slate}}> · ref: {note}</span>:null}</div></div>;}
 
 /* ---------- DISCIPLINE WRAPPER ---------- */
+/* ---------- LINTAS DISIPLIN: Top All & Resume ---------- */
+const DISC_COL={CIVIL:"#4F46E5",MECHANICAL:"#0D9488",PIPING:"#D97706",ELECTRICAL:"#7C3AED",INSTRUMENT:"#E11D48"};
+
+function BarX({rank,disc,code,name,val,max,pct,cum,vol,uom,unit}){const color=DISC_COL[disc]||COL.steel;return <div style={{marginBottom:11}}>
+  <div style={{display:"flex",gap:8,alignItems:"baseline",marginBottom:3}}>
+    <span style={{fontFamily:FM,fontSize:11,color:COL.sub,minWidth:18}}>{rank<10?"0":""}{rank}</span>
+    <span style={{fontFamily:FM,fontSize:9.5,fontWeight:700,color:"#fff",background:color,padding:"1.5px 6px",borderRadius:5,letterSpacing:.3}}>{disc}</span>
+    <span style={{fontFamily:FM,fontSize:11.5,color:color,fontWeight:600}}>{code}</span>
+    <span style={{fontSize:11.5,color:COL.ink,flex:1,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{name}</span>
+    <span style={{fontFamily:FM,fontSize:11.5,fontWeight:600}}>{rp(val)}{pct!=null&&<span style={{color:COL.sub,fontWeight:400}}> · {(pct*100).toFixed(1)}%</span>}{cum!=null&&<span style={{color:color,fontWeight:600}}> · Σ{(cum*100).toFixed(1)}%</span>}</span></div>
+  <div style={{position:"relative",height:6,borderRadius:3,background:COL.line,marginLeft:26}}>
+    <div style={{height:"100%",borderRadius:3,width:(val/max*100)+"%",background:color}}/>
+    {cum!=null&&<div style={{position:"absolute",top:-2,bottom:-2,left:`calc(${Math.min(100,cum*100)}% - 1px)`,width:2,background:COL.ink,opacity:.45,borderRadius:2}}/>}</div>
+  <div style={{marginLeft:26,marginTop:3,fontFamily:FM,fontSize:10.5,color:COL.sub}}>vol {grp(vol)} {uom} · U/P {rp(unit)}</div></div>;}
+
+function CrossPage({title,sub,children}){return <div style={{background:COL.paper,minHeight:"100vh"}}>
+  <div style={{maxWidth:1180,margin:"0 auto",padding:"26px 22px 60px"}}>
+    <div style={{fontFamily:FD,fontWeight:700,fontSize:24,color:COL.ink,letterSpacing:-.4}}>{title}</div>
+    <div style={{color:COL.sub,fontSize:13.5,marginTop:5,marginBottom:20,maxWidth:680,lineHeight:1.5}}>{sub}</div>
+    {children}</div></div>;}
+
+function TopAllView({reports}){
+  const [topN,setTopN]=useState(10);
+  const [src,setSrc]=useState("ahs");
+  const discs=DISCIPLINES.filter(d=>reports[d]);
+  const list=useMemo(()=>{const arr=[];discs.forEach(d=>{const items=(src==="ahs"?reports[d].ahsItems:reports[d].sbdyItems)||[];
+      items.forEach(it=>arr.push({...it,disc:d}));});arr.sort((a,b)=>b.v-a.v);let run=0;arr.forEach(x=>{run+=x.v;x.cum=run;});return arr;},[reports,src,discs.join(",")]);
+  const grand=list.reduce((s,x)=>s+x.v,0)||1;
+  const top=list.slice(0,topN);
+  const max=Math.max(1,...top.map(x=>x.v));
+  const perDisc=discs.map(d=>({d,v:(src==="ahs"?reports[d].ahsItems:reports[d].sbdyItems||[]).reduce((s,x)=>s+x.v,0)})).filter(x=>x.v>0).sort((a,b)=>b.v-a.v);
+  const cover=top.length?(top[top.length-1].cum/grand*100):0;
+  const srcLbl=src==="ahs"?"item pekerjaan (AHS)":"sumber daya (SBDY)";
+  return <CrossPage title="Top Lintas Disiplin" sub={"Gabungan penggerak biaya dari semua disiplin yang sudah dibuka, di-rank menurut nilai total. Tiap baris ditandai disiplin asalnya. Ganti antara "+srcLbl+" dan basis lainnya, lalu pilih jumlah item."}>
+    {discs.length===0?<div style={{background:COL.panel,borderRadius:16,padding:"56px 24px",textAlign:"center",boxShadow:SHADOW}}>
+      <Flame size={26} color={COL.sub}/><div style={{fontFamily:FD,fontWeight:600,fontSize:16,marginTop:10,color:COL.ink}}>Belum ada disiplin yang dibuka</div>
+      <div style={{color:COL.sub,fontSize:13,marginTop:6}}>Buka tiap disiplin (CIVIL, MECHANICAL, dst.) dan muat/kerjakan RAB-nya. Begitu ada datanya, gabungannya muncul di sini.</div></div>
+    :<>
+    <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:14,flexWrap:"wrap"}}>
+      <div style={{display:"flex",gap:4,background:COL.panel,border:`1px solid ${COL.line}`,borderRadius:10,padding:3}}>
+        {[["ahs","Item Pekerjaan"],["sbdy","Sumber Daya"]].map(([k,l])=>{const on=k===src;return <button key={k} onClick={()=>setSrc(k)} style={{padding:"6px 13px",borderRadius:8,border:"none",cursor:"pointer",fontSize:12,fontFamily:FM,fontWeight:on?600:400,background:on?COL.ink:"transparent",color:on?"#fff":COL.sub}}>{l}</button>;})}
+      </div>
+      <div style={{marginLeft:"auto",display:"flex",alignItems:"center",gap:6}}>
+        <span style={{fontSize:11,color:COL.sub,fontFamily:FM,textTransform:"uppercase",letterSpacing:.5}}>Tampilkan top</span>
+        {[10,20,30,40,50].map(n=>{const on=n===topN;return <button key={n} onClick={()=>setTopN(n)} style={{padding:"5px 11px",borderRadius:8,border:`1px solid ${on?COL.steel:COL.line}`,background:on?COL.steel:COL.panel,color:on?"#fff":COL.ink,cursor:"pointer",fontSize:12,fontFamily:FM,fontWeight:on?600:400}}>{n}</button>;})}
+      </div>
+    </div>
+    <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:16}}>
+      {perDisc.map(x=><div key={x.d} style={{display:"flex",alignItems:"center",gap:7,background:COL.panel,border:`1px solid ${COL.line}`,borderRadius:10,padding:"7px 12px"}}>
+        <span style={{width:9,height:9,borderRadius:3,background:DISC_COL[x.d]}}/>
+        <span style={{fontFamily:FM,fontSize:11,fontWeight:600,color:COL.ink}}>{x.d}</span>
+        <span style={{fontFamily:FM,fontSize:11,color:COL.sub}}>{rp(x.v)} · {(x.v/grand*100).toFixed(1)}%</span></div>)}
+    </div>
+    <div style={{background:COL.panel,borderRadius:16,boxShadow:SHADOW,padding:"16px 18px"}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",marginBottom:14}}>
+        <div style={{fontFamily:FD,fontWeight:600,fontSize:15,color:COL.ink}}>Top {topN} · {src==="ahs"?"Item Pekerjaan":"Sumber Daya"}</div>
+        <div style={{fontFamily:FM,fontSize:11.5,color:COL.sub}}>cakup {cover.toFixed(1)}% dari {list.length} item · total {rp(grand)}</div></div>
+      {top.map((x,i)=><BarX key={x.disc+"-"+x.code+"-"+i} rank={i+1} disc={x.disc} code={x.code} name={x.name} val={x.v} max={max} pct={x.v/grand} cum={x.cum/grand} vol={x.vol} uom={x.uom} unit={x.unit}/>)}
+    </div></>}</CrossPage>;
+}
+
+function ResumeView({reports}){
+  const rows=DISCIPLINES.map(d=>({d,r:reports[d],total:(reports[d]&&reports[d].total)||0,count:(reports[d]&&reports[d].count)||0,open:!!reports[d]}));
+  const grand=rows.reduce((s,x)=>s+x.total,0);
+  const items=rows.reduce((s,x)=>s+x.count,0);
+  const sorted=[...rows].sort((a,b)=>b.total-a.total);
+  const openCount=rows.filter(x=>x.open).length;
+  return <CrossPage title="Resume Lintas Disiplin" sub="Ringkasan total nilai RAB tiap disiplin beserta grand total proyek. Disiplin yang belum dibuka ditandai sebagai belum ada data — buka tabnya untuk memuat datanya.">
+    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16,marginBottom:18}}>
+      <div style={{background:COL.ink,borderRadius:16,padding:"20px 22px",boxShadow:SHADOW}}>
+        <div style={{fontFamily:FM,fontSize:11,color:"rgba(255,255,255,.6)",textTransform:"uppercase",letterSpacing:1}}>Grand total · {openCount}/5 disiplin</div>
+        <div style={{fontFamily:FD,fontWeight:700,fontSize:30,color:"#fff",marginTop:6}}>Rp {rp(grand)}</div>
+        <div style={{fontFamily:FM,fontSize:11.5,color:"rgba(255,255,255,.55)",marginTop:4}}>{items} item pekerjaan berkode</div></div>
+      <div style={{background:COL.panel,borderRadius:16,padding:"18px 20px",boxShadow:SHADOW}}>
+        <div style={{fontFamily:FM,fontSize:11,color:COL.sub,textTransform:"uppercase",letterSpacing:.5,marginBottom:10}}>Komposisi nilai</div>
+        <div style={{display:"flex",height:18,borderRadius:6,overflow:"hidden",background:COL.line}}>
+          {sorted.filter(x=>x.total>0).map(x=><div key={x.d} title={x.d+" "+rp(x.total)} style={{width:(grand?x.total/grand*100:0)+"%",background:DISC_COL[x.d]}}/>)}
+        </div>
+        <div style={{display:"flex",gap:10,flexWrap:"wrap",marginTop:10}}>
+          {DISCIPLINES.map(d=><div key={d} style={{display:"flex",alignItems:"center",gap:5}}>
+            <span style={{width:8,height:8,borderRadius:2,background:DISC_COL[d]}}/>
+            <span style={{fontFamily:FM,fontSize:10.5,color:COL.sub}}>{d}</span></div>)}
+        </div></div>
+    </div>
+    <div style={{background:COL.panel,borderRadius:16,boxShadow:SHADOW,overflow:"hidden"}}>
+      <div style={{display:"grid",gridTemplateColumns:"1.4fr 130px 90px 90px 1fr",padding:"11px 18px",borderBottom:`1px solid ${COL.line}`,fontFamily:FM,fontSize:10.5,color:COL.sub,textTransform:"uppercase",letterSpacing:.5}}>
+        <div>Disiplin</div><div style={{textAlign:"right"}}>Total</div><div style={{textAlign:"right"}}>% Total</div><div style={{textAlign:"right"}}>Item</div><div style={{paddingLeft:14}}>Porsi</div></div>
+      {sorted.map(x=><div key={x.d} style={{display:"grid",gridTemplateColumns:"1.4fr 130px 90px 90px 1fr",padding:"12px 18px",borderBottom:`1px solid ${COL.line}`,alignItems:"center"}}>
+        <div style={{display:"flex",alignItems:"center",gap:9}}>
+          <span style={{width:10,height:10,borderRadius:3,background:DISC_COL[x.d]}}/>
+          <span style={{fontFamily:FB,fontWeight:600,fontSize:13,color:COL.ink}}>{x.d}</span>
+          {!x.open&&<span style={{fontFamily:FM,fontSize:10,color:COL.amber,background:"#FEF3E2",padding:"1px 7px",borderRadius:5}}>belum dibuka</span>}</div>
+        <div style={{textAlign:"right",fontFamily:FM,fontSize:12.5,fontWeight:600,color:x.total?COL.ink:COL.sub}}>{x.total?rp(x.total):"–"}</div>
+        <div style={{textAlign:"right",fontFamily:FM,fontSize:12,color:COL.sub}}>{grand&&x.total?(x.total/grand*100).toFixed(1)+"%":"–"}</div>
+        <div style={{textAlign:"right",fontFamily:FM,fontSize:12,color:COL.sub}}>{x.count||"–"}</div>
+        <div style={{paddingLeft:14}}><div style={{height:7,borderRadius:4,background:COL.line}}><div style={{height:"100%",borderRadius:4,width:(grand?x.total/grand*100:0)+"%",background:DISC_COL[x.d]}}/></div></div></div>)}
+      <div style={{display:"grid",gridTemplateColumns:"1.4fr 130px 90px 90px 1fr",padding:"13px 18px",alignItems:"center",background:COL.paper}}>
+        <div style={{fontFamily:FD,fontWeight:700,fontSize:13.5,color:COL.ink}}>GRAND TOTAL</div>
+        <div style={{textAlign:"right",fontFamily:FM,fontSize:13,fontWeight:700,color:COL.ink}}>{rp(grand)}</div>
+        <div style={{textAlign:"right",fontFamily:FM,fontSize:12,color:COL.sub}}>100%</div>
+        <div style={{textAlign:"right",fontFamily:FM,fontSize:12,color:COL.sub}}>{items}</div><div/></div>
+    </div></CrossPage>;
+}
+
 const DISCIPLINES=["CIVIL","MECHANICAL","PIPING","ELECTRICAL","INSTRUMENT"];
 export default function App(){
   const [disc,setDisc]=useState("CIVIL");
   const [mounted,setMounted]=useState({CIVIL:true});
+  const [reports,setReports]=useState({});
+  const onReport=useCallback((d,r)=>setReports(p=>({...p,[d]:r})),[]);
   const pick=d=>{setMounted(m=>({...m,[d]:true}));setDisc(d);};
+  const CROSS=[["topall","Top All",Flame],["resume","Resume",Scale]];
+  const withData=Object.keys(reports).filter(d=>reports[d]&&reports[d].count>0).length;
   return <div style={{fontFamily:FB,background:"#0F1115",minHeight:"100vh"}}>
     <div style={{position:"sticky",top:0,zIndex:200,background:"#0F1115",borderBottom:"1px solid rgba(255,255,255,.08)",padding:"9px 16px",display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
       <span style={{color:"#fff",fontFamily:FD,fontWeight:700,fontSize:13,marginRight:4,letterSpacing:.3}}>DISIPLIN</span>
@@ -905,8 +1030,15 @@ export default function App(){
         style={{padding:"7px 15px",borderRadius:9,border:"none",cursor:"pointer",fontFamily:FB,fontWeight:on?600:500,fontSize:12.5,letterSpacing:.3,
         background:on?"#fff":"rgba(255,255,255,.08)",color:on?"#0F1115":"rgba(255,255,255,.7)",display:"flex",gap:7,alignItems:"center"}}>
         {d}{loaded&&<span style={{width:6,height:6,borderRadius:6,background:on?"#16A34A":"rgba(34,197,94,.6)"}} title="dimuat"/>}</button>;})}
-      <span style={{marginLeft:"auto",color:"rgba(255,255,255,.45)",fontSize:11,fontFamily:FM}}>{Object.keys(mounted).length}/5 disiplin dimuat · titik hijau = sudah ada datanya</span>
+      <span style={{width:1,height:20,background:"rgba(255,255,255,.15)",margin:"0 4px"}}/>
+      {CROSS.map(([key,lbl,Ic])=>{const on=key===disc;return <button key={key} onClick={()=>setDisc(key)}
+        style={{padding:"7px 13px",borderRadius:9,cursor:"pointer",fontFamily:FB,fontWeight:on?600:500,fontSize:12.5,letterSpacing:.3,display:"flex",gap:6,alignItems:"center",
+        border:on?"none":"1px solid rgba(129,140,248,.5)",background:on?"#818CF8":"transparent",color:on?"#0F1115":"#A5B4FC"}}>
+        <Ic size={14}/>{lbl}</button>;})}
+      <span style={{marginLeft:"auto",color:"rgba(255,255,255,.45)",fontSize:11,fontFamily:FM}}>{withData}/5 disiplin berisi data · titik hijau = dimuat</span>
     </div>
-    {DISCIPLINES.filter(d=>mounted[d]).map(d=><Studio key={d} discipline={d} hidden={d!==disc}/>)}
+    {DISCIPLINES.filter(d=>mounted[d]).map(d=><Studio key={d} discipline={d} hidden={d!==disc} onReport={onReport}/>)}
+    {disc==="topall"&&<TopAllView reports={reports}/>}
+    {disc==="resume"&&<ResumeView reports={reports}/>}
   </div>;
 }
