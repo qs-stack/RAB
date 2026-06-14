@@ -1013,6 +1013,235 @@ function ResumeView({reports}){
     </div></CrossPage>;
 }
 
+/* ---------- LEMBAR PENGESAHAN (finalisasi ke manajemen) ---------- */
+const PA_DEF=[["SURVEYING WORKS","Ls",1,200000000],["PERMIT","Ls",1,1000000000],["MOB-DEMOB","Ls",1,2000000000],["SITE FACILITIES","Ls",1,3000000000],["MESS PEKERJA","Ls",1,1000000000],["DEWATERING","Ls",1,500000000],["SUPPORT EQUIPMENT","Ls",1,5000000000],["ELECTRICITY","Ls",1,3000000000],["WATER CONSUMPTION","Ls",1,200000000],["SCAFFOLDING","Ls",1,200000000],["TOOLS","Ls",1,100000000],["QC TEST","Ls",1,100000000]];
+const PC_DEF=[["Indirect Cost (gaji, overhead, dll)","Month",24,1000000000],["Warranty Cost","Month",12,100000000]];
+const PD_DEF=[["Risiko Teknis",0.005],["Risiko Inflasi",0],["Risiko LD",0],["Risiko Kurs",0],["Risiko Contingency",0]];
+const PE_DEF=[["Provision Bond","pct",0.006,0],["Asuransi (CAR & BPJSTK)","pct",0.004,0],["QA & HSE Cost","pct",0.005,0],["Development Cost","pct",0,0],["Biaya Sosial","pct",0,0],["Spare for Negotiation","pct",0,0],["PPh Final pasal 23","pct",0.0265,0]];
+const PGRID="34px minmax(0,1fr) 78px 104px 150px 158px 60px 30px";
+
+function PengesahanView({reports,hidden}){
+  const idRef=useRef(1000);const nid=p=>p+(idRef.current++);
+  const [secA,setSecA]=useState(()=>PA_DEF.map((r,i)=>({id:"a"+i,desc:r[0],unit:r[1],qty:r[2],rate:r[3]})));
+  const [secC,setSecC]=useState(()=>PC_DEF.map((r,i)=>({id:"c"+i,desc:r[0],unit:r[1],qty:r[2],rate:r[3]})));
+  const [secD,setSecD]=useState(()=>PD_DEF.map((r,i)=>({id:"d"+i,desc:r[0],pct:r[1]})));
+  const [secE,setSecE]=useState(()=>PE_DEF.map((r,i)=>({id:"e"+i,desc:r[0],mode:r[1],pct:r[2],amt:r[3]})));
+  const [mosPct,setMosPct]=useState(0.08);
+  const upA=(id,k,v)=>setSecA(s=>s.map(r=>r.id===id?{...r,[k]:v}:r)),delA=id=>setSecA(s=>s.filter(r=>r.id!==id)),addA=()=>setSecA(s=>[...s,{id:nid("a"),desc:"",unit:"Ls",qty:1,rate:0}]);
+  const upC=(id,k,v)=>setSecC(s=>s.map(r=>r.id===id?{...r,[k]:v}:r)),delC=id=>setSecC(s=>s.filter(r=>r.id!==id)),addC=()=>setSecC(s=>[...s,{id:nid("c"),desc:"",unit:"Ls",qty:1,rate:0}]);
+  const upD=(id,k,v)=>setSecD(s=>s.map(r=>r.id===id?{...r,[k]:v}:r)),delD=id=>setSecD(s=>s.filter(r=>r.id!==id)),addD=()=>setSecD(s=>[...s,{id:nid("d"),desc:"",pct:0}]);
+  const upE=(id,k,v)=>setSecE(s=>s.map(r=>r.id===id?{...r,[k]:v}:r)),delE=id=>setSecE(s=>s.filter(r=>r.id!==id)),addE=()=>setSecE(s=>[...s,{id:nid("e"),desc:"",mode:"pct",pct:0,amt:0}]);
+
+  const MONTHS=["Januari","Februari","Maret","April","Mei","Juni","Juli","Agustus","September","Oktober","November","Desember"];
+  const _td=new Date();const todayStr=_td.getDate()+" "+MONTHS[_td.getMonth()]+" "+_td.getFullYear();
+  const [meta,setMeta]=useState({title:"LEMBAR PENGESAHAN",subtitle:"RAB TENDER",project:"PROJECT : (NAMA PROYEK) - (LOKASI PROYEK) - (TAHUN)",place:"Jakarta",date:todayStr,company:"PT. Wijaya Karya (Persero) Tbk.",division:"Divisi EPCC"});
+  const upMeta=(k,v)=>setMeta(m=>({...m,[k]:v}));
+  const [signs,setSigns]=useState([{id:"s0",role:"Dibuat oleh",name:"",position:"Estimator"},{id:"s1",role:"Diperiksa oleh",name:"",position:"Manajer Estimasi"},{id:"s2",role:"Disetujui oleh",name:"",position:"General Manager"}]);
+  const upS=(id,k,v)=>setSigns(s=>s.map(r=>r.id===id?{...r,[k]:v}:r)),delS=id=>setSigns(s=>s.filter(r=>r.id!==id)),addS=()=>setSigns(s=>[...s,{id:nid("s"),role:"Mengetahui",name:"",position:""}]);
+  const [savedDirect,setSavedDirect]=useState(null);
+  const fileRef=useRef(null);
+  const liveB=DISCIPLINES.map(d=>({d,total:(reports[d]&&reports[d].total)||0})).filter(x=>x.total>0);
+  const bRows=liveB.length?liveB:(savedDirect||[]);
+  const A=secA.reduce((s,r)=>s+(r.qty||0)*(r.rate||0),0);
+  const B=bRows.reduce((s,r)=>s+r.total,0);
+  const C=secC.reduce((s,r)=>s+(r.qty||0)*(r.rate||0),0);
+  const FIXED=A+B+C;
+  const dPct=secD.reduce((s,r)=>s+(r.pct||0),0);
+  const ePctSum=secE.filter(r=>r.mode==="pct").reduce((s,r)=>s+(r.pct||0),0);
+  const eFixed=secE.filter(r=>r.mode==="amt").reduce((s,r)=>s+(r.amt||0),0);
+  const denom=1-dPct-ePctSum-(mosPct||0);
+  const valid=denom>0;
+  const SALES=valid?(FIXED+eFixed)/denom:0;
+  const D=dPct*SALES,E=ePctSum*SALES+eFixed,MOS=(mosPct||0)*SALES,subABCDE=A+B+C+D+E;
+  const pof=v=>SALES>0?v/SALES:0;
+  const saveP=()=>{const payload={v:1,kind:"pengesahan",meta,secA,secC,secD,secE,mosPct,signs,direct:bRows};
+    const blob=new Blob([JSON.stringify(payload,null,2)],{type:"application/json"});const a=document.createElement("a");
+    a.href=URL.createObjectURL(blob);a.download="pengesahan.json";document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),1500);};
+  const loadP=async(file)=>{try{const d=JSON.parse(await file.text());
+    if(d.meta)setMeta(m=>({...m,...d.meta}));if(Array.isArray(d.secA))setSecA(d.secA);if(Array.isArray(d.secC))setSecC(d.secC);
+    if(Array.isArray(d.secD))setSecD(d.secD);if(Array.isArray(d.secE))setSecE(d.secE);if(typeof d.mosPct==="number")setMosPct(d.mosPct);
+    if(Array.isArray(d.signs))setSigns(d.signs);if(Array.isArray(d.direct))setSavedDirect(d.direct);idRef.current+=100000;}catch(e){}};
+  const esc=s=>String(s==null?"":s).replace(/[&<>]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[c]));
+  const buildHTML=()=>{const pc=v=>(pof(v)*100).toFixed(2)+"%";
+    const tr=(no,desc,unit,qty,rate,amt,pct)=>`<tr><td class="c">${no}</td><td>${esc(desc)}</td><td class="c">${unit}</td><td class="r">${qty}</td><td class="r">${rate}</td><td class="r b">${amt}</td><td class="r">${pct}</td></tr>`;
+    const sub=(label,amt,pct)=>`<tr class="sub"><td></td><td>${label}</td><td></td><td></td><td></td><td class="r b">${amt}</td><td class="r">${pct}</td></tr>`;
+    const sh=(letter,title,bg)=>`<tr class="sh"><td colspan="5" style="background:${bg}">${letter} &nbsp;&nbsp; ${esc(title)}</td><td class="r" style="background:${bg}"></td><td style="background:${bg}"></td></tr>`;
+    let rows="";
+    rows+=sh("A","SITE PREPARATION","#E8EAFD");secA.forEach((r,i)=>{const a=(r.qty||0)*(r.rate||0);rows+=tr(i+1,r.desc,r.unit,grp(r.qty),rp(r.rate),rp(a),pc(a));});rows+=sub("SUB-TOTAL A",rp(A),pc(A));
+    rows+=sh("B","DIRECT COST","#E1F2F0");bRows.forEach((r,i)=>{rows+=tr("B."+(i+1),r.d,"Ls","1","dari Resume",rp(r.total),pc(r.total));});rows+=sub("SUB-TOTAL B",rp(B),pc(B));
+    rows+=sh("C","INDIRECT COST","#FCEFD9");secC.forEach((r,i)=>{const a=(r.qty||0)*(r.rate||0);rows+=tr("C."+(i+1),r.desc,r.unit,grp(r.qty),rp(r.rate),rp(a),pc(a));});rows+=sub("SUB-TOTAL C",rp(C),pc(C));
+    rows+=sh("D","UNCOVERABLE CONSTRUCTION RISK","#FCE3E9");secD.forEach((r,i)=>{const a=(r.pct||0)*SALES;rows+=tr("D."+(i+1),r.desc,"%",(r.pct*100).toFixed(2)+"%","x Sales",rp(a),pc(a));});rows+=sub("SUB-TOTAL D",rp(D),pc(D));
+    rows+=sh("E","OTHER EXPENSE","#EFE7FB");secE.forEach((r,i)=>{const a=r.mode==="pct"?(r.pct||0)*SALES:(r.amt||0);const q=r.mode==="pct"?(r.pct*100).toFixed(2)+"%":"";const rt=r.mode==="pct"?"x Sales":"nominal";rows+=tr("E."+(i+1),r.desc,r.mode==="pct"?"%":"Rp",q,rt,rp(a),pc(a));});rows+=sub("SUB-TOTAL E",rp(E),pc(E));
+    rows+=`<tr class="grand"><td></td><td>SUB-TOTAL A + B + C + D + E</td><td></td><td></td><td></td><td class="r b">${rp(subABCDE)}</td><td class="r">${pc(subABCDE)}</td></tr>`;
+    rows+=`<tr class="mos"><td></td><td>MOS &middot; Margin on Sales</td><td class="c">%</td><td class="r">${(mosPct*100).toFixed(2)}%</td><td class="r">x Sales</td><td class="r b">${rp(MOS)}</td><td class="r">${(mosPct*100).toFixed(2)}%</td></tr>`;
+    rows+=`<tr class="sales"><td></td><td>SALES &middot; NILAI PENAWARAN</td><td></td><td></td><td></td><td class="r b">${rp(SALES)}</td><td class="r">100%</td></tr>`;
+    const signCells=signs.map(s=>`<div class="sign"><div class="role">${esc(s.role)}</div><div class="sp"></div><div class="nm">${esc(s.name)||"&nbsp;"}</div><div class="pos">${esc(s.position)}</div></div>`).join("");
+    return `<!doctype html><html><head><meta charset="utf-8"><title>${esc(meta.title)} - ${esc(meta.project)}</title><style>
+@page{size:A4;margin:14mm 12mm;}*{box-sizing:border-box;-webkit-print-color-adjust:exact;print-color-adjust:exact;}
+body{font-family:'Helvetica Neue',Arial,sans-serif;color:#141821;font-size:10px;margin:0;}
+.t{text-align:center;font-weight:800;font-size:16px;letter-spacing:.5px;}.st{text-align:center;font-weight:700;font-size:12px;margin-top:2px;}
+.pj{text-align:center;font-size:10px;margin:6px 0 12px;color:#333;}
+table{width:100%;border-collapse:collapse;}td{border:1px solid #c9ccd4;padding:4px 6px;}
+th{border:1px solid #555;background:#11151C;color:#fff;padding:5px 6px;font-size:9px;text-transform:uppercase;letter-spacing:.4px;}
+.c{text-align:center;}.r{text-align:right;}.b{font-weight:700;}
+tr.sh td{font-weight:800;font-size:10px;}tr.sub td{background:#f3f4f8;font-weight:700;}
+tr.grand td{background:#E8EAFD;font-weight:800;}tr.mos td{background:#FFF4E6;font-weight:700;color:#B45309;}
+tr.sales td{background:#141821;color:#fff;font-weight:800;font-size:11px;}
+.signs{display:flex;justify-content:space-around;gap:18px;margin-top:30px;}
+.sign{flex:1;text-align:center;font-size:10px;}.sign .role{margin-bottom:4px;color:#444;}
+.sign .sp{height:62px;}.sign .nm{font-weight:700;border-top:1px solid #141821;padding-top:3px;}.sign .pos{color:#555;font-size:9px;}
+.foot{text-align:right;margin-top:18px;font-size:10px;line-height:1.55;}</style></head><body>
+<div class="t">${esc(meta.title)}</div><div class="st">${esc(meta.subtitle)}</div><div class="pj">${esc(meta.project)}</div>
+<table><thead><tr><th>No</th><th>Description</th><th>Unit</th><th>Qty</th><th>Unit Rate (IDR)</th><th>Amount (IDR)</th><th>%</th></tr></thead><tbody>${rows}</tbody></table>
+<div class="foot">${esc(meta.place)}, ${esc(meta.date)}<br><b>${esc(meta.company)}</b><br>${esc(meta.division)}</div>
+<div class="signs">${signCells}</div></body></html>`;};
+  const exportPDF=()=>{const html=buildHTML();const ifr=document.createElement("iframe");
+    ifr.style.cssText="position:fixed;right:0;bottom:0;width:0;height:0;border:0;";document.body.appendChild(ifr);
+    const w=ifr.contentWindow;w.document.open();w.document.write(html);w.document.close();
+    setTimeout(()=>{try{w.focus();w.print();}catch(e){}setTimeout(()=>{try{document.body.removeChild(ifr);}catch(e){}},2000);},450);};
+
+  const inp=(align="left")=>({width:"100%",boxSizing:"border-box",border:"1px solid "+COL.line,borderRadius:7,padding:"6px 8px",fontFamily:align==="left"?FB:FM,fontSize:12,textAlign:align,background:"#fff",color:COL.ink,outline:"none"});
+  const ROW={display:"grid",gridTemplateColumns:PGRID,gap:6,alignItems:"center",padding:"5px 14px",borderBottom:"1px solid "+COL.line};
+  const cNo={fontFamily:FM,fontSize:11,color:COL.sub,textAlign:"center"},cAmt={fontFamily:FM,fontSize:12.5,fontWeight:600,textAlign:"right",color:COL.ink},cPct={fontFamily:FM,fontSize:11,textAlign:"right",color:COL.sub},muted={textAlign:"right",fontFamily:FM,fontSize:10.5,color:COL.sub};
+  const delBtn={border:"none",background:"transparent",cursor:"pointer",color:COL.red,display:"flex",justifyContent:"center",padding:0};
+  const addBtn={margin:"8px 0 4px 48px",display:"inline-flex",alignItems:"center",gap:5,border:"1px dashed "+COL.steel,background:"#fff",color:COL.steel,borderRadius:8,padding:"6px 12px",fontSize:12,cursor:"pointer",fontFamily:FB,fontWeight:500};
+  const band=c=>({display:"flex",alignItems:"center",gap:11,padding:"11px 14px",background:c,color:"#fff"});
+  const bL=letter=><span style={{fontFamily:FD,fontWeight:800,fontSize:13,minWidth:20}}>{letter}</span>;
+  const bT=t=><span style={{fontFamily:FD,fontWeight:700,fontSize:13,letterSpacing:.3,flex:1}}>{t}</span>;
+  const bAmt=(v)=><span style={{fontFamily:FM,fontSize:12.5,fontWeight:700}}>{rp(v)} <span style={{opacity:.7,fontWeight:400}}>· {(pof(v)*100).toFixed(2)}%</span></span>;
+  const pctCell=(value,onChange)=><div style={{display:"flex",alignItems:"center",gap:3,justifyContent:"flex-end"}}>
+    <NumInput value={+(value*100).toFixed(6)} onChange={v=>onChange((v||0)/100)} style={inp("right")}/><span style={{fontFamily:FM,fontSize:11,color:COL.sub}}>%</span></div>;
+  const subRow=(label,val,accent)=><div style={{display:"grid",gridTemplateColumns:PGRID,gap:6,alignItems:"center",padding:"9px 14px",background:COL.paper,borderTop:"2px solid "+accent,borderBottom:"1px solid "+COL.line}}>
+    <div/><div style={{fontFamily:FD,fontWeight:700,fontSize:12.5,color:COL.ink}}>{label}</div><div/><div/><div/>
+    <div style={{...cAmt,fontWeight:700}}>{rp(val)}</div><div style={cPct}>{(pof(val)*100).toFixed(2)}%</div><div/></div>;
+  const costRow=(r,no,up,del)=>{const amt=(r.qty||0)*(r.rate||0);return <div key={r.id} style={ROW}>
+    <div style={cNo}>{no}</div>
+    <input value={r.desc} placeholder="Deskripsi item" onChange={e=>up(r.id,"desc",e.target.value)} style={inp("left")}/>
+    <input value={r.unit} onChange={e=>up(r.id,"unit",e.target.value)} style={inp("center")}/>
+    <NumInput value={r.qty} onChange={v=>up(r.id,"qty",v)} thousands style={inp("right")}/>
+    <NumInput value={r.rate} onChange={v=>up(r.id,"rate",v)} thousands style={inp("right")}/>
+    <div style={cAmt}>{rp(amt)}</div><div style={cPct}>{(pof(amt)*100).toFixed(2)}%</div>
+    <button onClick={()=>del(r.id)} style={delBtn}><Trash2 size={13}/></button></div>;};
+
+  const colHead=<div style={{display:"grid",gridTemplateColumns:PGRID,gap:6,padding:"9px 14px",background:"#11151C",color:"rgba(255,255,255,.75)",fontFamily:FM,fontSize:10,letterSpacing:.5,textTransform:"uppercase",borderRadius:"14px 14px 0 0"}}>
+    <div style={{textAlign:"center"}}>No</div><div>Description</div><div style={{textAlign:"center"}}>Unit</div><div style={{textAlign:"right"}}>Qty</div><div style={{textAlign:"right"}}>Unit Rate</div><div style={{textAlign:"right"}}>Amount</div><div style={{textAlign:"right"}}>%</div><div/></div>;
+
+  const parts=[["A",A,COL.steel],["B",B,COL.teal],["C",C,COL.amber],["D",D,"#E11D48"],["E",E,"#7C3AED"],["MOS",MOS,COL.green]];
+
+  return <div style={{display:hidden?"none":undefined,background:COL.paper,minHeight:"100vh"}}>
+    <div style={{maxWidth:1180,margin:"0 auto",padding:"26px 22px 70px"}}>
+      <div style={{fontFamily:FD,fontWeight:700,fontSize:24,color:COL.ink,letterSpacing:-.4}}>Lembar Pengesahan</div>
+      <div style={{color:COL.sub,fontSize:13.5,marginTop:5,marginBottom:20,maxWidth:720,lineHeight:1.5}}>Rekap RAB Tender untuk finalisasi ke manajemen. Bagian B (Direct Cost) otomatis dari tab Resume; A, C, D, E dapat diedit/ditambah/dihapus. D &amp; E dihitung sebagai persen terhadap Sales (E bisa juga diisi nominal langsung). Sales = A+B+C+D+E+MOS, dengan MOS = margin terhadap Sales.</div>
+
+      <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:14}}>
+        <button onClick={saveP} style={{display:"inline-flex",alignItems:"center",gap:6,border:"1px solid "+COL.line,background:"#fff",color:COL.ink,borderRadius:9,padding:"8px 14px",fontSize:12.5,fontFamily:FB,fontWeight:600,cursor:"pointer"}}><Download size={14}/>Simpan</button>
+        <button onClick={()=>fileRef.current&&fileRef.current.click()} style={{display:"inline-flex",alignItems:"center",gap:6,border:"1px solid "+COL.line,background:"#fff",color:COL.ink,borderRadius:9,padding:"8px 14px",fontSize:12.5,fontFamily:FB,fontWeight:600,cursor:"pointer"}}><Upload size={14}/>Buka</button>
+        <button onClick={exportPDF} style={{display:"inline-flex",alignItems:"center",gap:6,border:"none",background:COL.steel,color:"#fff",borderRadius:9,padding:"8px 16px",fontSize:12.5,fontFamily:FB,fontWeight:600,cursor:"pointer"}}><FileSpreadsheet size={14}/>Export PDF</button>
+        <input ref={fileRef} type="file" accept=".json" style={{display:"none"}} onChange={e=>{const f=e.target.files[0];if(f)loadP(f);e.target.value="";}}/>
+      </div>
+      <div style={{background:COL.panel,borderRadius:14,boxShadow:SHADOW,padding:"14px 16px",marginBottom:18,display:"grid",gridTemplateColumns:"1fr 1fr",gap:"11px 16px"}}>
+        {[["title","Judul dokumen",0],["subtitle","Sub-judul",0],["project","Proyek (nama - lokasi - tahun)",1],["place","Tempat",0],["date","Tanggal",0],["company","Perusahaan",0],["division","Divisi / Unit",0]].map(([k,lbl,full])=>
+          <label key={k} style={{display:"block",gridColumn:full?"1 / -1":undefined}}>
+            <span style={{fontFamily:FM,fontSize:10,color:COL.sub,textTransform:"uppercase",letterSpacing:.5}}>{lbl}</span>
+            <input value={meta[k]} onChange={e=>upMeta(k,e.target.value)} style={{...inp("left"),marginTop:4}}/></label>)}
+      </div>
+
+      {!valid&&<div style={{background:"#FEECEC",border:"1px solid "+COL.red,color:COL.red,borderRadius:12,padding:"12px 16px",marginBottom:16,fontSize:13,fontFamily:FB,fontWeight:500}}>Total persentase D + E + MOS = {((dPct+ePctSum+(mosPct||0))*100).toFixed(2)}% (≥ 100%). Sales tidak bisa dihitung. Turunkan persentasenya.</div>}
+
+      <div style={{display:"grid",gridTemplateColumns:"1.25fr 1fr 1.15fr",gap:14,marginBottom:20}}>
+        <div style={{background:"linear-gradient(135deg,#4F46E5,#7C3AED)",borderRadius:18,padding:"22px 24px",color:"#fff",boxShadow:SHADOW}}>
+          <div style={{fontFamily:FM,fontSize:11,letterSpacing:1,opacity:.85,textTransform:"uppercase"}}>Sales · Nilai Penawaran</div>
+          <div style={{fontFamily:FD,fontWeight:800,fontSize:29,marginTop:6,lineHeight:1.1}}>Rp {rp(SALES)}</div>
+          <div style={{fontFamily:FM,fontSize:11.5,opacity:.85,marginTop:6}}>Total biaya A–E: Rp {rp(subABCDE)}</div></div>
+        <div style={{background:COL.panel,borderRadius:18,padding:"20px 22px",boxShadow:SHADOW,display:"flex",flexDirection:"column",justifyContent:"center"}}>
+          <div style={{fontFamily:FM,fontSize:11,color:COL.sub,textTransform:"uppercase",letterSpacing:.5}}>Margin on Sales</div>
+          <div style={{fontFamily:FD,fontWeight:800,fontSize:24,color:COL.amber,marginTop:6}}>Rp {rp(MOS)}</div>
+          <div style={{fontFamily:FM,fontSize:12,color:COL.sub,marginTop:4}}>{(mosPct*100).toFixed(2)}% dari Sales</div></div>
+        <div style={{background:COL.panel,borderRadius:18,padding:"18px 20px",boxShadow:SHADOW}}>
+          <div style={{fontFamily:FM,fontSize:11,color:COL.sub,textTransform:"uppercase",letterSpacing:.5,marginBottom:9}}>Komposisi Sales</div>
+          <div style={{display:"flex",height:16,borderRadius:5,overflow:"hidden",background:COL.line}}>
+            {parts.filter(p=>p[1]>0).map(p=><div key={p[0]} title={p[0]+" "+rp(p[1])} style={{width:(SALES?p[1]/SALES*100:0)+"%",background:p[2]}}/>)}</div>
+          <div style={{display:"flex",gap:9,flexWrap:"wrap",marginTop:9}}>
+            {parts.map(p=><div key={p[0]} style={{display:"flex",alignItems:"center",gap:4}}><span style={{width:8,height:8,borderRadius:2,background:p[2]}}/><span style={{fontFamily:FM,fontSize:10.5,color:COL.sub}}>{p[0]} {(pof(p[1])*100).toFixed(1)}%</span></div>)}</div></div>
+      </div>
+
+      <div style={{background:COL.panel,borderRadius:16,boxShadow:SHADOW,overflow:"hidden"}}>
+        {colHead}
+        <div style={band(COL.steel)}>{bL("A")}{bT("SITE PREPARATION")}{bAmt(A)}</div>
+        {secA.map((r,i)=>costRow(r,i+1,upA,delA))}
+        <div style={{padding:"0 0 6px"}}><button onClick={addA} style={addBtn}><Plus size={13}/>tambah item A</button></div>
+        {subRow("SUB-TOTAL A",A,COL.steel)}
+
+        <div style={band(COL.teal)}>{bL("B")}{bT("DIRECT COST · dari Resume disiplin")}{bAmt(B)}</div>
+        {bRows.length===0?<div style={{padding:"16px 16px",color:COL.sub,fontSize:12.5,fontFamily:FB}}>Belum ada disiplin berisi data. Buka &amp; kerjakan RAB tiap disiplin (CIVIL, MECHANICAL, dst.), nilainya otomatis masuk ke sini.</div>
+        :bRows.map((r,i)=><div key={r.d} style={ROW}>
+          <div style={cNo}>B.{i+1}</div>
+          <div style={{display:"flex",alignItems:"center",gap:8}}><span style={{width:10,height:10,borderRadius:3,background:DISC_COL[r.d]}}/><span style={{fontFamily:FB,fontWeight:600,fontSize:12.5,color:COL.ink}}>{r.d}</span></div>
+          <div style={{textAlign:"center",fontFamily:FM,fontSize:12,color:COL.sub}}>Ls</div><div style={{textAlign:"right",fontFamily:FM,fontSize:12,color:COL.sub}}>1</div>
+          <div style={muted}>dari Resume</div><div style={cAmt}>{rp(r.total)}</div><div style={cPct}>{(pof(r.total)*100).toFixed(2)}%</div><div/></div>)}
+        {subRow("SUB-TOTAL B",B,COL.teal)}
+
+        <div style={band(COL.amber)}>{bL("C")}{bT("INDIRECT COST")}{bAmt(C)}</div>
+        {secC.map((r,i)=>costRow(r,"C."+(i+1),upC,delC))}
+        <div style={{padding:"0 0 6px"}}><button onClick={addC} style={addBtn}><Plus size={13}/>tambah item C</button></div>
+        {subRow("SUB-TOTAL C",C,COL.amber)}
+
+        <div style={band("#E11D48")}>{bL("D")}{bT("UNCOVERABLE CONSTRUCTION RISK")}{bAmt(D)}</div>
+        {secD.map((r,i)=>{const amt=(r.pct||0)*SALES;return <div key={r.id} style={ROW}>
+          <div style={cNo}>D.{i+1}</div>
+          <input value={r.desc} placeholder="Nama risiko" onChange={e=>upD(r.id,"desc",e.target.value)} style={inp("left")}/>
+          <div style={{textAlign:"center",fontFamily:FM,fontSize:11,color:COL.sub}}>%</div>
+          {pctCell(r.pct,v=>upD(r.id,"pct",v))}
+          <div style={muted}>× Sales</div><div style={cAmt}>{rp(amt)}</div><div style={cPct}>{(pof(amt)*100).toFixed(2)}%</div>
+          <button onClick={()=>delD(r.id)} style={delBtn}><Trash2 size={13}/></button></div>;})}
+        <div style={{padding:"0 0 6px"}}><button onClick={addD} style={addBtn}><Plus size={13}/>tambah item risiko</button></div>
+        {subRow("SUB-TOTAL D",D,"#E11D48")}
+
+        <div style={band("#7C3AED")}>{bL("E")}{bT("OTHER EXPENSE")}{bAmt(E)}</div>
+        {secE.map((r,i)=>{const amt=r.mode==="pct"?(r.pct||0)*SALES:(r.amt||0);return <div key={r.id} style={ROW}>
+          <div style={cNo}>E.{i+1}</div>
+          <input value={r.desc} placeholder="Nama biaya" onChange={e=>upE(r.id,"desc",e.target.value)} style={inp("left")}/>
+          <button onClick={()=>upE(r.id,"mode",r.mode==="pct"?"amt":"pct")} title="ganti basis % / Rp" style={{border:"1px solid "+COL.line,background:r.mode==="pct"?"#EEF0FE":"#ECFDF5",color:r.mode==="pct"?COL.steel:COL.green,borderRadius:7,padding:"5px 0",fontFamily:FM,fontSize:11,fontWeight:600,cursor:"pointer"}}>{r.mode==="pct"?"%":"Rp"}</button>
+          {r.mode==="pct"?pctCell(r.pct,v=>upE(r.id,"pct",v)):<div/>}
+          {r.mode==="pct"?<div style={muted}>× Sales</div>:<div style={muted}>nominal</div>}
+          {r.mode==="pct"?<div style={cAmt}>{rp(amt)}</div>:<NumInput value={r.amt} onChange={v=>upE(r.id,"amt",v)} thousands style={inp("right")}/>}
+          <div style={cPct}>{(pof(amt)*100).toFixed(2)}%</div>
+          <button onClick={()=>delE(r.id)} style={delBtn}><Trash2 size={13}/></button></div>;})}
+        <div style={{padding:"0 0 6px"}}><button onClick={addE} style={addBtn}><Plus size={13}/>tambah item E</button></div>
+        {subRow("SUB-TOTAL E",E,"#7C3AED")}
+
+        <div style={{display:"grid",gridTemplateColumns:PGRID,gap:6,alignItems:"center",padding:"12px 14px",background:"#EEF0FE",borderTop:"2px solid "+COL.steel}}>
+          <div/><div style={{fontFamily:FD,fontWeight:800,fontSize:13,color:COL.ink}}>SUB-TOTAL A + B + C + D + E</div><div/><div/><div/>
+          <div style={{...cAmt,fontWeight:800,fontSize:13}}>{rp(subABCDE)}</div><div style={cPct}>{(pof(subABCDE)*100).toFixed(2)}%</div><div/></div>
+
+        <div style={{display:"grid",gridTemplateColumns:PGRID,gap:6,alignItems:"center",padding:"10px 14px",background:"#FFF7ED",borderBottom:"1px solid "+COL.line}}>
+          <div/><div style={{fontFamily:FD,fontWeight:700,fontSize:13,color:COL.amber}}>MOS · Margin on Sales</div>
+          <div style={{textAlign:"center",fontFamily:FM,fontSize:11,color:COL.sub}}>%</div>
+          {pctCell(mosPct,setMosPct)}
+          <div style={muted}>× Sales</div>
+          <div style={{...cAmt,color:COL.amber,fontWeight:700}}>{rp(MOS)}</div><div style={cPct}>{(mosPct*100).toFixed(2)}%</div><div/></div>
+
+        <div style={{display:"grid",gridTemplateColumns:PGRID,gap:6,alignItems:"center",padding:"14px 14px",background:COL.ink,borderRadius:"0 0 16px 16px"}}>
+          <div/><div style={{fontFamily:FD,fontWeight:800,fontSize:14.5,color:"#fff",letterSpacing:.3}}>SALES · NILAI PENAWARAN</div><div/><div/><div/>
+          <div style={{textAlign:"right",fontFamily:FM,fontWeight:800,fontSize:14.5,color:"#fff"}}>{rp(SALES)}</div>
+          <div style={{textAlign:"right",fontFamily:FM,fontSize:11,color:"rgba(255,255,255,.7)"}}>100%</div><div/></div>
+      </div>
+
+      <div style={{background:COL.panel,borderRadius:16,boxShadow:SHADOW,padding:"16px 18px",marginTop:18}}>
+        <div style={{fontFamily:FD,fontWeight:700,fontSize:15,color:COL.ink}}>Penandatangan</div>
+        <div style={{color:COL.sub,fontSize:12,marginTop:3,marginBottom:12,maxWidth:640,lineHeight:1.5}}>Status (mis. Dibuat oleh / Diperiksa oleh / Disetujui oleh), nama, dan jabatan. Ditampilkan sebagai kolom tanda tangan di bagian bawah PDF.</div>
+        <div style={{display:"grid",gridTemplateColumns:"190px 1fr 1fr 30px",gap:8,marginBottom:6,fontFamily:FM,fontSize:10,color:COL.sub,textTransform:"uppercase",letterSpacing:.5}}>
+          <div>Status</div><div>Nama</div><div>Jabatan</div><div/></div>
+        {signs.map(s=><div key={s.id} style={{display:"grid",gridTemplateColumns:"190px 1fr 1fr 30px",gap:8,alignItems:"center",marginBottom:8}}>
+          <input value={s.role} placeholder="Dibuat / Disetujui oleh" onChange={e=>upS(s.id,"role",e.target.value)} style={inp("left")}/>
+          <input value={s.name} placeholder="Nama lengkap" onChange={e=>upS(s.id,"name",e.target.value)} style={inp("left")}/>
+          <input value={s.position} placeholder="Jabatan" onChange={e=>upS(s.id,"position",e.target.value)} style={inp("left")}/>
+          <button onClick={()=>delS(s.id)} style={{border:"none",background:"transparent",cursor:"pointer",color:COL.red,display:"flex",justifyContent:"center"}}><Trash2 size={14}/></button></div>)}
+        <button onClick={addS} style={{marginTop:4,display:"inline-flex",alignItems:"center",gap:5,border:"1px dashed "+COL.steel,background:"#fff",color:COL.steel,borderRadius:8,padding:"6px 12px",fontSize:12,cursor:"pointer",fontFamily:FB,fontWeight:500}}><Plus size={13}/>tambah penandatangan</button>
+      </div>
+    </div></div>;
+}
+
 const DISCIPLINES=["CIVIL","MECHANICAL","PIPING","ELECTRICAL","INSTRUMENT"];
 export default function App(){
   const [disc,setDisc]=useState("CIVIL");
@@ -1020,7 +1249,7 @@ export default function App(){
   const [reports,setReports]=useState({});
   const onReport=useCallback((d,r)=>setReports(p=>({...p,[d]:r})),[]);
   const pick=d=>{setMounted(m=>({...m,[d]:true}));setDisc(d);};
-  const CROSS=[["topall","Top All",Flame],["resume","Resume",Scale]];
+  const CROSS=[["topall","Top All",Flame],["resume","Resume",Scale],["pengesahan","Pengesahan",CheckCircle2]];
   const withData=Object.keys(reports).filter(d=>reports[d]&&reports[d].count>0).length;
   return <div style={{fontFamily:FB,background:"#0F1115",minHeight:"100vh"}}>
     <div style={{position:"sticky",top:0,zIndex:200,background:"#0F1115",borderBottom:"1px solid rgba(255,255,255,.08)",padding:"9px 16px",display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
@@ -1040,5 +1269,6 @@ export default function App(){
     {DISCIPLINES.filter(d=>mounted[d]).map(d=><Studio key={d} discipline={d} hidden={d!==disc} onReport={onReport}/>)}
     {disc==="topall"&&<TopAllView reports={reports}/>}
     {disc==="resume"&&<ResumeView reports={reports}/>}
+    <PengesahanView reports={reports} hidden={disc!=="pengesahan"}/>
   </div>;
 }
