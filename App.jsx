@@ -86,7 +86,8 @@ function Studio({discipline,hidden}){
 
 
   const addRow=()=>setRows(r=>[...r,{id:uid(),item:"",unit:"",vol:"",code:null,query:""}]);
-  const loadDemo=()=>setRows(DEMO.map(d=>({id:uid(),item:d[0],unit:d[1],vol:d[2],code:null,query:""})));
+  const loadDemo=()=>setRows(DEMO.map(d=>{const best=catalog.map(c=>({c,s:score(d[0],d[1],c)})).sort((a,b)=>b.s-a.s)[0];
+    return {id:uid(),item:d[0],unit:d[1],vol:d[2],code:(best&&best.s>=4)?best.c.c:null,query:""};}));
   const upd=(id,p)=>setRows(r=>r.map(x=>x.id===id?{...x,...p}:x));
   const del=id=>setRows(r=>r.filter(x=>x.id!==id));
   const clearCodes=()=>setRows(r=>r.map(x=>({...x,code:null})));
@@ -823,38 +824,57 @@ function VendorTab({meta,prices,setPrices,resQty,offers,addOffer,pushOffer,impor
 
 /* ---------- TOP HIGH ITEM TAB ---------- */
 function TopTab({itemRows,ahs,meta,prices,rates,names,catByCode,effQ,refs}){
+  const [topN,setTopN]=useState(10);
   const hasProj=itemRows.some(r=>r.code!=null&&r.amt);
-  const topAhs=useMemo(()=>{const m={};itemRows.forEach(r=>{if(r.code!=null&&r.amt){if(!m[r.code])m[r.code]={v:0,vol:0};m[r.code].v+=r.amt;m[r.code].vol+=parseFloat(r.vol)||0;}});
-    return Object.entries(m).map(([c,o])=>({c:+c,v:o.v,vol:o.vol,unit:rates[+c]?.ur||0,uom:catByCode[+c]?.u||""})).sort((a,b)=>b.v-a.v).slice(0,10);},[itemRows,rates,catByCode]);
-  const topSbdy=useMemo(()=>{const m={};itemRows.forEach(r=>{if(r.code==null||!r.vol)return;const v=parseFloat(r.vol);if(isNaN(v))return;
-      (ahs[r.code]||[]).forEach((c,i)=>{m[c.rc]=(m[c.rc]||0)+v*effQ(r.code,i,c.q||0);});});
-    return Object.entries(m).map(([rc,qty])=>({rc,vol:qty,unit:prices[rc]||0,v:qty*(prices[rc]||0),uom:meta[rc]?.u||"",ref:refs[rc]||""})).filter(x=>x.v>0).sort((a,b)=>b.v-a.v).slice(0,10);},[itemRows,ahs,prices,effQ,meta]);
-  const maxA=Math.max(1,...topAhs.map(x=>x.v)),maxS=Math.max(1,...topSbdy.map(x=>x.v));
   const grand=itemRows.reduce((s,r)=>s+(r.amt||0),0);
-  if(!hasProj) return <div style={{background:COL.panel,borderRadius:16,padding:"56px 24px",textAlign:"center",boxShadow:SHADOW}}>
-    <Flame size={26} color={COL.sub}/><div style={{fontFamily:FD,fontWeight:600,fontSize:16,marginTop:10}}>Belum ada penggerak biaya</div>
-    <div style={{color:COL.sub,fontSize:13,marginTop:6,maxWidth:460,marginInline:"auto",lineHeight:1.5}}>Top 10 AHS & Top 10 SBDY dihitung dari kontribusi Rupiah pada BOQ client. Upload/isi <b>BOQ Client</b> dan beri kode itemnya, lalu peringkatnya muncul di sini.</div></div>;
+  const ahsRanked=useMemo(()=>{const m={};itemRows.forEach(r=>{if(r.code!=null&&r.amt){if(!m[r.code])m[r.code]={v:0,vol:0};m[r.code].v+=r.amt;m[r.code].vol+=parseFloat(r.vol)||0;}});
+    const arr=Object.entries(m).map(([c,o])=>({c:+c,v:o.v,vol:o.vol,unit:rates[+c]?.ur||0,uom:catByCode[+c]?.u||""})).sort((a,b)=>b.v-a.v);
+    let run=0;arr.forEach(x=>{run+=x.v;x.cum=run;});return arr;},[itemRows,rates,catByCode]);
+  const sbdyRanked=useMemo(()=>{const m={};itemRows.forEach(r=>{if(r.code==null||!r.vol)return;const v=parseFloat(r.vol);if(isNaN(v))return;
+      (ahs[r.code]||[]).forEach((c,i)=>{m[c.rc]=(m[c.rc]||0)+v*effQ(r.code,i,c.q||0);});});
+    const arr=Object.entries(m).map(([rc,qty])=>({rc,vol:qty,unit:prices[rc]||0,v:qty*(prices[rc]||0),uom:meta[rc]?.u||"",ref:refs[rc]||""})).filter(x=>x.v>0).sort((a,b)=>b.v-a.v);
+    let run=0;arr.forEach(x=>{run+=x.v;x.cum=run;});return arr;},[itemRows,ahs,prices,effQ,meta,refs]);
+  const ahsTotal=ahsRanked.reduce((s,x)=>s+x.v,0)||1,sbdyTotal=sbdyRanked.reduce((s,x)=>s+x.v,0)||1;
+  const topAhs=ahsRanked.slice(0,topN),topSbdy=sbdyRanked.slice(0,topN);
+  const maxA=Math.max(1,...topAhs.map(x=>x.v)),maxS=Math.max(1,...topSbdy.map(x=>x.v));
+  const codedRows=itemRows.filter(r=>r.code!=null);
+  const ratedRows=codedRows.filter(r=>r.rt&&r.rt.ur>0);
+  if(!hasProj){let msg;
+    if(codedRows.length===0)msg=<>Belum ada item <b>berkode</b> di BOQ ini. Buka tab <b>BOQ</b>, beri kode tiap item (atau pakai <b>Apply All Code</b>), lalu peringkat penggerak biaya muncul di sini.</>;
+    else if(ratedRows.length===0)msg=<><b>{codedRows.length}</b> item sudah berkode, tapi <b>unit rate-nya masih 0</b>. Pastikan kode itu punya <b>analisa</b> di tab <b>AHS</b> dan harga sumber dayanya sudah terisi di tab <b>SBDY</b>.</>;
+    else msg=<><b>{ratedRows.length}</b> item berkode sudah punya unit rate, tapi <b>volume BOQ-nya kosong / 0</b> sehingga amount-nya 0. Isi kolom <b>Volume</b> di tab BOQ.</>;
+    return <div style={{background:COL.panel,borderRadius:16,padding:"56px 24px",textAlign:"center",boxShadow:SHADOW}}>
+    <Flame size={26} color={COL.sub}/><div style={{fontFamily:FD,fontWeight:600,fontSize:16,marginTop:10}}>Top High Item belum bisa dihitung</div>
+    <div style={{color:COL.sub,fontSize:13,marginTop:6,maxWidth:480,marginInline:"auto",lineHeight:1.55}}>{msg}</div></div>;}
   return <div>
-    <div style={{fontSize:12.5,color:COL.sub,marginBottom:14}}>Penggerak biaya pada BOQ client saat ini (mengikuti override koef proyek). Tiap baris menampilkan <b>volume</b> & <b>unit price</b> untuk bahan evaluasi manajemen.</div>
+    <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:14,flexWrap:"wrap"}}>
+      <div style={{fontSize:12.5,color:COL.sub,maxWidth:520}}>Penggerak biaya pada BOQ saat ini (mengikuti override koef proyek). <b>Σ%</b> = persen kumulatif — cakupan item teratas terhadap total proyek.</div>
+      <div style={{marginLeft:"auto",display:"flex",alignItems:"center",gap:6}}>
+        <span style={{fontSize:11,color:COL.sub,fontFamily:FM,textTransform:"uppercase",letterSpacing:.5}}>Tampilkan top</span>
+        {[10,20,30,40,50].map(n=>{const on=n===topN;return <button key={n} onClick={()=>setTopN(n)} style={{padding:"5px 11px",borderRadius:8,border:`1px solid ${on?COL.steel:COL.line}`,background:on?COL.steel:COL.panel,color:on?"#fff":COL.ink,cursor:"pointer",fontSize:12,fontFamily:FM,fontWeight:on?600:400}}>{n}</button>;})}
+      </div>
+    </div>
     <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:18}}>
-      <Panel title="Top 10 AHS" subtitle="by total amount" icon={<Layers size={15} color={COL.steel}/>}>
-        {topAhs.map((x,i)=><Bar key={x.c} rank={i+1} code={x.c} name={catByCode[x.c]?.n||names[x.c]||""} val={x.v} max={maxA} pct={grand?x.v/grand:null} color={COL.steel} vol={x.vol} uom={x.uom} unit={x.unit}/>)}
+      <Panel title={"Top "+topN+" AHS"} subtitle={"cakup "+((topAhs.length?topAhs[topAhs.length-1].cum/ahsTotal:0)*100).toFixed(1)+"% dari "+ahsRanked.length+" analisa"} icon={<Layers size={15} color={COL.steel}/>}>
+        {topAhs.map((x,i)=><Bar key={x.c} rank={i+1} code={x.c} name={catByCode[x.c]?.n||names[x.c]||""} val={x.v} max={maxA} pct={x.v/ahsTotal} cum={x.cum/ahsTotal} color={COL.steel} vol={x.vol} uom={x.uom} unit={x.unit}/>)}
       </Panel>
-      <Panel title="Top 10 SBDY" subtitle="by spend in project" icon={<Boxes size={15} color={COL.amber}/>}>
-        {topSbdy.map((x,i)=><Bar key={x.rc} rank={i+1} code={x.rc} name={meta[x.rc]?.n||""} val={x.v} max={maxS} pct={grand?x.v/grand:null} color={CATCOL[meta[x.rc]?.cat]||COL.amber} vol={x.vol} uom={x.uom} unit={x.unit} ref={x.ref}/>)}
+      <Panel title={"Top "+topN+" SBDY"} subtitle={"cakup "+((topSbdy.length?topSbdy[topSbdy.length-1].cum/sbdyTotal:0)*100).toFixed(1)+"% dari "+sbdyRanked.length+" sumber daya"} icon={<Boxes size={15} color={COL.amber}/>}>
+        {topSbdy.map((x,i)=><Bar key={x.rc} rank={i+1} code={x.rc} name={meta[x.rc]?.n||""} val={x.v} max={maxS} pct={x.v/sbdyTotal} cum={x.cum/sbdyTotal} color={CATCOL[meta[x.rc]?.cat]||COL.amber} vol={x.vol} uom={x.uom} unit={x.unit} ref={x.ref}/>)}
       </Panel>
     </div></div>;
 }
 function Panel({title,subtitle,icon,children}){return <div style={{background:COL.panel,borderRadius:16,boxShadow:SHADOW,padding:"14px 16px"}}>
   <div style={{display:"flex",alignItems:"baseline",gap:8,marginBottom:12}}>{icon}<span style={{fontFamily:FD,fontWeight:600,fontSize:15}}>{title}</span>
     <span style={{fontSize:11,color:COL.sub,fontFamily:FM,marginLeft:"auto"}}>{subtitle}</span></div>{children}</div>;}
-function Bar({rank,code,name,val,max,pct,color,vol,uom,unit,ref}){return <div style={{marginBottom:11}}>
+function Bar({rank,code,name,val,max,pct,cum,color,vol,uom,unit,ref}){return <div style={{marginBottom:11}}>
   <div style={{display:"flex",gap:8,alignItems:"baseline",marginBottom:3}}>
     <span style={{fontFamily:FM,fontSize:11,color:COL.sub,minWidth:18}}>{rank<10?"0":""}{rank}</span>
     <span style={{fontFamily:FM,fontSize:11.5,color:color,fontWeight:600}}>{code}</span>
     <span style={{fontSize:11.5,color:COL.ink,flex:1,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{name}</span>
-    <span style={{fontFamily:FM,fontSize:11.5,fontWeight:600}}>{rp(val)}{pct!=null&&<span style={{color:COL.sub,fontWeight:400}}> · {(pct*100).toFixed(1)}%</span>}</span></div>
-  <div style={{height:6,borderRadius:3,background:COL.line,marginLeft:26}}><div style={{height:"100%",borderRadius:3,width:(val/max*100)+"%",background:color}}/></div>
+    <span style={{fontFamily:FM,fontSize:11.5,fontWeight:600}}>{rp(val)}{pct!=null&&<span style={{color:COL.sub,fontWeight:400}}> · {(pct*100).toFixed(1)}%</span>}{cum!=null&&<span style={{color:color,fontWeight:600}}> · Σ{(cum*100).toFixed(1)}%</span>}</span></div>
+  <div style={{position:"relative",height:6,borderRadius:3,background:COL.line,marginLeft:26}}>
+    <div style={{height:"100%",borderRadius:3,width:(val/max*100)+"%",background:color}}/>
+    {cum!=null&&<div title="kumulatif" style={{position:"absolute",top:-2,bottom:-2,left:`calc(${Math.min(100,cum*100)}% - 1px)`,width:2,background:COL.ink,opacity:.45,borderRadius:2}}/>}</div>
   <div style={{marginLeft:26,marginTop:3,fontFamily:FM,fontSize:10.5,color:COL.sub}}>vol {grp(vol)} {uom} · U/P {rp(unit)}{ref?<span style={{color:COL.slate}}> · ref: {ref}</span>:null}</div></div>;}
 
 /* ---------- DISCIPLINE WRAPPER ---------- */
