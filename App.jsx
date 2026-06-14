@@ -874,14 +874,14 @@ function TopTab({itemRows,ahs,meta,prices,rates,names,catByCode,effQ,refs}){
         {topAhs.map((x,i)=><Bar key={x.c} rank={i+1} code={x.c} name={catByCode[x.c]?.n||names[x.c]||""} val={x.v} max={maxA} pct={x.v/ahsTotal} cum={x.cum/ahsTotal} color={COL.steel} vol={x.vol} uom={x.uom} unit={x.unit}/>)}
       </Panel>
       <Panel title={"Top "+topN+" SBDY"} subtitle={"cakup "+((topSbdy.length?topSbdy[topSbdy.length-1].cum/sbdyTotal:0)*100).toFixed(1)+"% dari "+sbdyRanked.length+" sumber daya"} icon={<Boxes size={15} color={COL.amber}/>}>
-        {topSbdy.map((x,i)=><Bar key={x.rc} rank={i+1} code={x.rc} name={meta[x.rc]?.n||""} val={x.v} max={maxS} pct={x.v/sbdyTotal} cum={x.cum/sbdyTotal} color={CATCOL[meta[x.rc]?.cat]||COL.amber} vol={x.vol} uom={x.uom} unit={x.unit} ref={x.ref}/>)}
+        {topSbdy.map((x,i)=><Bar key={x.rc} rank={i+1} code={x.rc} name={meta[x.rc]?.n||""} val={x.v} max={maxS} pct={x.v/sbdyTotal} cum={x.cum/sbdyTotal} color={CATCOL[meta[x.rc]?.cat]||COL.amber} vol={x.vol} uom={x.uom} unit={x.unit} note={x.ref}/>)}
       </Panel>
     </div></div>;
 }
 function Panel({title,subtitle,icon,children}){return <div style={{background:COL.panel,borderRadius:16,boxShadow:SHADOW,padding:"14px 16px"}}>
   <div style={{display:"flex",alignItems:"baseline",gap:8,marginBottom:12}}>{icon}<span style={{fontFamily:FD,fontWeight:600,fontSize:15}}>{title}</span>
     <span style={{fontSize:11,color:COL.sub,fontFamily:FM,marginLeft:"auto"}}>{subtitle}</span></div>{children}</div>;}
-function Bar({rank,code,name,val,max,pct,cum,color,vol,uom,unit,ref}){return <div style={{marginBottom:11}}>
+function Bar({rank,code,name,val,max,pct,cum,color,vol,uom,unit,note}){return <div style={{marginBottom:11}}>
   <div style={{display:"flex",gap:8,alignItems:"baseline",marginBottom:3}}>
     <span style={{fontFamily:FM,fontSize:11,color:COL.sub,minWidth:18}}>{rank<10?"0":""}{rank}</span>
     <span style={{fontFamily:FM,fontSize:11.5,color:color,fontWeight:600}}>{code}</span>
@@ -890,7 +890,7 @@ function Bar({rank,code,name,val,max,pct,cum,color,vol,uom,unit,ref}){return <di
   <div style={{position:"relative",height:6,borderRadius:3,background:COL.line,marginLeft:26}}>
     <div style={{height:"100%",borderRadius:3,width:(val/max*100)+"%",background:color}}/>
     {cum!=null&&<div title="kumulatif" style={{position:"absolute",top:-2,bottom:-2,left:`calc(${Math.min(100,cum*100)}% - 1px)`,width:2,background:COL.ink,opacity:.45,borderRadius:2}}/>}</div>
-  <div style={{marginLeft:26,marginTop:3,fontFamily:FM,fontSize:10.5,color:COL.sub}}>vol {grp(vol)} {uom} · U/P {rp(unit)}{ref?<span style={{color:COL.slate}}> · ref: {ref}</span>:null}</div></div>;}
+  <div style={{marginLeft:26,marginTop:3,fontFamily:FM,fontSize:10.5,color:COL.sub}}>vol {grp(vol)} {uom} · U/P {rp(unit)}{note?<span style={{color:COL.slate}}> · ref: {note}</span>:null}</div></div>;}
 
 /* ---------- DISCIPLINE WRAPPER ---------- */
 const DISCIPLINES=["CIVIL","MECHANICAL","PIPING","ELECTRICAL","INSTRUMENT"];
