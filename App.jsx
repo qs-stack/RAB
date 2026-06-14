@@ -49,12 +49,15 @@ const PREF={A:"m",C:"l",D:"q",E:"s"};const TAG={LM:"m",LB:"l",EQ:"q",SC:"s"};
 class ErrorBoundary extends React.Component{
   constructor(p){super(p);this.state={err:null};}
   static getDerivedStateFromError(err){return {err};}
+  componentDidCatch(err,info){try{console.error("TabError:",err&&err.message,err&&err.stack,info&&info.componentStack);}catch(e){}}
   componentDidUpdate(prev){if(prev.tab!==this.props.tab&&this.state.err)this.setState({err:null});}
-  render(){if(this.state.err)return <div style={{background:COL.panel,borderRadius:16,padding:"36px 26px",boxShadow:SHADOW}}>
+  render(){if(this.state.err){const e=this.state.err;const msg=(e&&e.name?e.name+": ":"")+(e&&e.message?e.message:String(e));
+    return <div style={{background:COL.panel,borderRadius:16,padding:"36px 26px",boxShadow:SHADOW}}>
     <div style={{display:"flex",gap:8,alignItems:"center",color:COL.red,fontWeight:600,fontFamily:FD,fontSize:15}}><AlertTriangle size={18}/>Terjadi error saat menampilkan tab ini</div>
-    <div style={{color:COL.sub,fontSize:13,marginTop:8,lineHeight:1.5,maxWidth:560}}>Bagian lain aplikasi tetap aman — pindah ke tab lain lalu kembali untuk mencoba ulang. Bila terus terjadi, kirim detail teknis di bawah ke pengembang:</div>
-    <pre style={{marginTop:10,background:"#FBF1F1",border:"1px solid #F3D6D6",borderRadius:8,padding:"10px 12px",fontFamily:FM,fontSize:11.5,color:COL.red,whiteSpace:"pre-wrap",overflow:"auto",maxHeight:260}}>{String((this.state.err&&(this.state.err.stack||this.state.err.message))||this.state.err)}</pre>
-  </div>;return this.props.children;}
+    <div style={{color:COL.sub,fontSize:13,marginTop:8,lineHeight:1.5,maxWidth:560}}>Bagian lain aplikasi tetap aman — pindah ke tab lain lalu kembali untuk mencoba ulang. Pesan error (kirim ke pengembang):</div>
+    <div style={{marginTop:10,background:"#FBF1F1",border:"1px solid #F3D6D6",borderRadius:8,padding:"12px 14px",fontFamily:FM,fontSize:13,color:COL.red,fontWeight:600,whiteSpace:"pre-wrap",wordBreak:"break-word"}}>{msg}</div>
+    <pre style={{marginTop:8,background:COL.paper,border:`1px solid ${COL.line}`,borderRadius:8,padding:"10px 12px",fontFamily:FM,fontSize:11,color:COL.sub,whiteSpace:"pre-wrap",overflow:"auto",maxHeight:200}}>{String(e&&e.stack||"")}</pre>
+  </div>;}return this.props.children;}
 }
 function Studio({discipline,hidden}){
   const [catalog,setCatalog]=useState(CATALOG_SEED);
