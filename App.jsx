@@ -99,8 +99,7 @@ function Studio({discipline,hidden}){
 
 
   const addRow=()=>setRows(r=>[...r,{id:uid(),item:"",unit:"",vol:"",code:null,query:""}]);
-  const loadDemo=()=>setRows(DEMO.map(d=>{const best=catalog.map(c=>({c,s:score(d[0],d[1],c)})).sort((a,b)=>b.s-a.s)[0];
-    return {id:uid(),item:d[0],unit:d[1],vol:d[2],code:(best&&best.s>=4)?best.c.c:null,query:""};}));
+  const loadDemo=()=>setRows(DEMO.map(d=>({id:uid(),item:d[0],unit:d[1],vol:d[2],code:null,query:""})));
   const upd=(id,p)=>setRows(r=>r.map(x=>x.id===id?{...x,...p}:x));
   const del=id=>setRows(r=>r.filter(x=>x.id!==id));
   const clearCodes=()=>setRows(r=>r.map(x=>({...x,code:null})));
