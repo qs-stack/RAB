@@ -33,7 +33,7 @@ function score(item,unit,c){const ct=expand(norm(item));const gt=new Set(norm(c.
 const rp=n=>n==null||isNaN(n)?"–":new Intl.NumberFormat("id-ID").format(Math.round(n));
 const grp=n=>n==null||n===""||isNaN(n)?"":new Intl.NumberFormat("id-ID",{maximumFractionDigits:4}).format(n);
 const decStr=n=>n==null||n===""?"":String(n).replace(".",",");
-function parseNum(raw,thousands){let s=(raw==null?"":raw).toString().replace(/\s/g,"");if(thousands)s=s.replace(/\./g,"");s=s.replace(",",".").replace(/[^0-9.\-]/g,"");const n=parseFloat(s);return isNaN(n)?0:n;}
+function parseNum(raw,thousands){if(typeof raw==="number")return isFinite(raw)?raw:0;let s=(raw==null?"":raw).toString().replace(/\s/g,"");if(thousands)s=s.replace(/\./g,"");s=s.replace(",",".").replace(/[^0-9.\-]/g,"");const n=parseFloat(s);return isNaN(n)?0:n;}
 // Numeric input that accepts comma decimals; shows thousands separators when not focused (thousands mode)
 function NumInput({value,onChange,thousands,style}){const [t,setT]=useState(null);const editing=t!==null;
   const show=editing?t:(thousands?grp(value):decStr(value));
@@ -61,11 +61,11 @@ class ErrorBoundary extends React.Component{
   </div>;}return this.props.children;}
 }
 function Studio({discipline,hidden,onReport}){
-  const [catalog,setCatalog]=useState(CATALOG_SEED);
-  const [meta,setMeta]=useState(MODEL_SEED.sbdy);            // code -> {n,u,cat}
-  const [prices,setPrices]=useState(()=>{const o={};for(const k in MODEL_SEED.sbdy)o[k]=MODEL_SEED.sbdy[k].p;return o;});
-  const [ahs,setAhs]=useState(MODEL_SEED.ahs);               // code -> [{rc,q}]
-  const [names,setNames]=useState(MODEL_SEED.ahsnames);
+  const [catalog,setCatalog]=useState([]);
+  const [meta,setMeta]=useState({});                        // code -> {n,u,cat}  (kosong sampai muat AHS Master)
+  const [prices,setPrices]=useState({});
+  const [ahs,setAhs]=useState({});                          // code -> [{rc,q}]
+  const [names,setNames]=useState({});
   const [ovr,setOvr]=useState({});                           // project coef overrides: code -> {compIndex: qty}
   const [addc,setAddc]=useState({});                          // project-only extra components: code -> [{rc,q,g}] (tidak menyentuh AHS Master)
   const [refs,setRefs]=useState({});                         // SBDY keterangan/sumber harga: rc -> string
@@ -77,7 +77,7 @@ function Studio({discipline,hidden,onReport}){
   const [offers,setOffers]=useState({});                     // rc -> [{n:nama vendor, p:harga}] penawaran per item
   const [rows,setRows]=useState([]);
   const [tab,setTab]=useState("boq");
-  const [catSrc,setCatSrc]=useState("Master bawaan (R.6)");
+  const [catSrc,setCatSrc]=useState("Belum ada master — kosong");
   const masterRef=useRef();
 
   const catByCode=useMemo(()=>{const m={};catalog.forEach(c=>m[c.c]=c);return m;},[catalog]);
@@ -261,6 +261,20 @@ function Studio({discipline,hidden,onReport}){
   }catch(err){alert("Gagal baca: "+err.message);}};if(/\.csv$/i.test(file.name))fr.readAsBinaryString(file);else fr.readAsArrayBuffer(file);}
   // ---- upload AHS Master ----
   const ahsmRef=useRef();
+  // ---- AHS Master sebagai file JSON (katalog + AHS + sumber daya) ----
+  const applyMaster=(d,label)=>{
+    if(Array.isArray(d.catalog))setCatalog(d.catalog);
+    if(d.ahs&&typeof d.ahs==="object")setAhs(d.ahs);
+    if(d.names&&typeof d.names==="object")setNames(d.names);
+    if(d.sbdy&&typeof d.sbdy==="object"){const m={},p={};Object.keys(d.sbdy).forEach(k=>{const r=d.sbdy[k]||{};m[k]={n:r.n||"",u:r.u||"",cat:r.cat||(String(k)[0]==="C"?"l":String(k)[0]==="D"?"q":String(k)[0]==="E"?"s":"m")};p[k]=r.p!=null?r.p:0;});setMeta(m);setPrices(p);}
+    setCatSrc(label||d.src||"AHS Master (dimuat)");
+  };
+  const exportMaster=()=>{const sbdy={};Object.keys(meta).forEach(k=>{sbdy[k]={...meta[k],p:prices[k]!=null?prices[k]:0};});
+    const payload={v:1,kind:"ahsmaster",src:catSrc,catalog,ahs,sbdy,names};
+    const blob=new Blob([JSON.stringify(payload)],{type:"application/json"});const a=document.createElement("a");
+    a.href=URL.createObjectURL(blob);a.download="AHS_Master_"+discipline+".json";document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),1500);};
+  const openMaster=async(file)=>{try{const d=JSON.parse(await file.text());if(d.kind&&d.kind!=="ahsmaster"){alert("File ini bukan AHS Master (JSON).");return;}applyMaster(d,(d.src||"AHS Master")+" (dimuat)");}catch(e){alert("Gagal membaca file AHS Master JSON.");}};
+  const loadBundledMaster=()=>applyMaster({catalog:CATALOG_SEED,ahs:MODEL_SEED.ahs,names:MODEL_SEED.ahsnames,sbdy:MODEL_SEED.sbdy},"Master bawaan (R.6)");
   function readAhsM(file){const fr=new FileReader();fr.onload=e=>{try{
     const isCsv=/\.csv$/i.test(file.name);const wb=XLSX.read(e.target.result,{type:isCsv?"binary":"array"});
     const A=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{header:1,defval:null});
@@ -287,6 +301,43 @@ function Studio({discipline,hidden,onReport}){
     codes.forEach(rc=>{const m=meta[rc]||{};d.push([rc,m.n||"",m.u||"",CATLBL[m.cat]||m.cat||"",prices[rc]!=null?prices[rc]:0,refs[rc]||""]);});
     const ws=XLSX.utils.aoa_to_sheet(d);ws["!cols"]=[{wch:12},{wch:46},{wch:8},{wch:12},{wch:14},{wch:28}];
     const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,"SBDY");XLSX.writeFile(wb,"SBDY_harga.xlsx");}
+  // ---- Export AHS (kerangka per item BOQ) & Import AHS (breakdown SBDY diisi manual di Excel) ----
+  const KLAS_LBL={m:"material",l:"upah",q:"alat",s:"subkon"};
+  const KLAS_MAP={material:["m","A"],bahan:["m","A"],mat:["m","A"],upah:["l","C"],labor:["l","C"],tenaga:["l","C"],alat:["q","D"],equipment:["q","D"],sewa:["q","D"],subkon:["s","E"],subcont:["s","E"],"sub-cont":["s","E"],sub:["s","E"],borongan:["s","E"]};
+  function exportAHS(){
+    let codes=[...new Set(itemRows.filter(r=>r.code!=null).map(r=>r.code))].filter(c=>catByCode[c]);
+    if(!codes.length)codes=Object.keys(ahs).map(Number).filter(c=>catByCode[c]);
+    codes.sort((a,b)=>a-b);
+    const d=[["kode ahs","klasifikasi SD","item ahs","satuan","koef SD"]];
+    codes.forEach(c=>{const cb=catByCode[c]||{};d.push([c,"",cb.n||names[c]||"",cb.u||"",""]);
+      (ahs[c]||[]).forEach(cp=>{const m=meta[cp.rc]||{};d.push(["",KLAS_LBL[m.cat]||"",m.n||"",m.u||"",cp.q!=null?cp.q:""]);});});
+    const ws=XLSX.utils.aoa_to_sheet(d);ws["!cols"]=[{wch:10},{wch:14},{wch:52},{wch:10},{wch:10}];
+    const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,"AHS");XLSX.writeFile(wb,"AHS_breakdown_"+discipline+".xlsx");}
+  function importAHS(file){const fr=new FileReader();fr.onload=e=>{try{
+    const isCsv=/\.csv$/i.test(file.name);const wb=XLSX.read(e.target.result,{type:isCsv?"binary":"array"});
+    const A=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{header:1,defval:null});
+    const need={kode:["kode ahs","kode_ahs","kodeahs","kode analisa","kode"],klas:["klasifikasi sd","klasifikasi","klas","kelompok","jenis"],item:["item ahs","item","sumber daya","nama","uraian"],unit:["satuan","unit"],koef:["koef sd","koef","koefisien","coef","qty"]};
+    const h=findHdr(A,need);if(!h){alert("Header tidak ketemu. Kolom: kode ahs, klasifikasi SD, item ahs, satuan, koef SD.");return;}
+    const {idx}=h;const nAhs={},nNames={},catUp={},nMeta={},nPrices={};let cur=null,ci=0,nA=0,nS=0;
+    const usedAuto=new Set([...Object.keys(names),...catalog.map(c=>String(c.c))].map(x=>Number(x)).filter(x=>x>=AUTO_BASE));let seq=AUTO_BASE;
+    const nextAhs=()=>{do{seq++;}while(usedAuto.has(seq));usedAuto.add(seq);return seq;};
+    for(let i=h.row+1;i<A.length;i++){const r=A[i]||[];
+      const kodeStr=idx.kode>=0&&r[idx.kode]!=null?String(r[idx.kode]).trim():"";
+      const item=idx.item>=0&&r[idx.item]!=null?String(r[idx.item]).trim():"";
+      const unit=idx.unit>=0&&r[idx.unit]!=null?String(r[idx.unit]).trim():"";
+      const koefRaw=idx.koef>=0?r[idx.koef]:null;
+      if(kodeStr){let code=parseInt(kodeStr,10);if(isNaN(code))code=nextAhs();
+        cur=code;ci=0;nAhs[code]=[];nA++;nNames[code]=item||("AHS "+code);catUp[code]={n:nNames[code],u:unit||"Ls"};continue;}
+      const klas=idx.klas>=0&&r[idx.klas]!=null?String(r[idx.klas]).trim().toLowerCase():"";
+      const kv=KLAS_MAP[klas];const hasKoef=koefRaw!=null&&String(koefRaw).trim()!=="";
+      if(cur!=null&&kv&&hasKoef){ci++;const[cat,pfx]=kv;const rc=pfx+cur+"-"+String(ci).padStart(2,"0");
+        nMeta[rc]={n:item,u:unit,cat};if(prices[rc]==null)nPrices[rc]=0;nAhs[cur].push({rc,q:parseNum(koefRaw,true)});nS++;}
+    }
+    if(!nA){alert("Tidak ada baris AHS terbaca (kolom 'kode ahs' kosong semua).");return;}
+    setCatalog(c=>{const map=new Map(c.map(x=>[x.c,x]));Object.keys(catUp).forEach(cs=>{const code=+cs,{n,u}=catUp[code];map.set(code,map.has(code)?{...map.get(code),n,u}:{c:code,e:"AHS",sec:"IMPORT AHS",n,u});});return [...map.values()];});
+    setNames(n=>({...n,...nNames}));setMeta(m=>({...m,...nMeta}));setPrices(p=>({...p,...nPrices}));setAhs(a=>({...a,...nAhs}));
+    setTimeout(()=>alert(nA+" AHS & "+nS+" sumber daya ter-generate. Isi harga lewat Export/Upload SBDY di tab SBDY."),50);
+  }catch(err){alert("Gagal baca: "+err.message);}};if(/\.csv$/i.test(file.name))fr.readAsBinaryString(file);else fr.readAsArrayBuffer(file);}
 
   const priced=rows.map(r=>{const rt=r.code!=null?projRates[r.code]:null;const v=parseFloat(r.vol);
     const amt=(rt&&!isNaN(v))?rt.ur*v:null;return{...r,rt,ur:rt?rt.ur:null,amt};});
@@ -376,8 +427,8 @@ function Studio({discipline,hidden,onReport}){
 
       <ErrorBoundary tab={tab}>
       {tab==="boq"&&<BoqTab {...{priced,itemRows,total,matched,flagged,catalog,rates,upd,del,addRow,loadDemo,readClient,clearRows,clearCodes,autoAHS,autoSBDY}}/>}
-      {tab==="ahs"&&<AhsTab {...{itemRows,ahs,addc,meta,prices,rates:projRates,names,catByCode,ovr,setOverride,resetOverride,addProjComp,setProjComp,delProjComp}}/>}
-      {tab==="ahsm"&&<AhsMasterTab {...{ahs,setQty,setGroup,addComponent,delComponent,addAhsItem,meta,prices,rates,names,catByCode,ahsmRef,readAhsM,dlTemplate,clearAhs}}/>}
+      {tab==="ahs"&&<AhsTab {...{itemRows,ahs,addc,meta,prices,rates:projRates,names,catByCode,ovr,setOverride,resetOverride,addProjComp,setProjComp,delProjComp,exportAHS,importAHS}}/>}
+      {tab==="ahsm"&&<AhsMasterTab {...{ahs,setQty,setGroup,addComponent,delComponent,addAhsItem,meta,prices,rates,names,catByCode,ahsmRef,readAhsM,dlTemplate,clearAhs,openMaster,exportMaster,loadBundledMaster}}/>}
       {tab==="sbdy"&&<SbdyTab {...{meta,prices,setPrices,addResource,delResource,refs,setRefs,resQty,sbdyRef,readSbdy,dlTemplate,clearSbdy,exportSbdy}}/>}
       {tab==="vendor"&&<VendorTab {...{meta,prices,setPrices,resQty,offers,addOffer,pushOffer,importOffers,setOfferName,setOfferPrice,setOfferDate,delOffer,useOffer,vgroups,setVgroups,vgroupOf,setVgroupOf}}/>}
       {tab==="top"&&<TopTab {...{itemRows,ahs,meta,prices,rates:projRates,names,catByCode,effQ,refs}}/>}
@@ -527,18 +578,26 @@ function BoqRow({r,idx,grid,catalog,rates,upd,del}){
 }
 
 /* ---------- AHS TAB (project view — follows BOQ client volumes) ---------- */
-function AhsTab({itemRows,ahs,addc,meta,prices,rates,names,catByCode,ovr,setOverride,resetOverride,addProjComp,setProjComp,delProjComp}){
+function AhsTab({itemRows,ahs,addc,meta,prices,rates,names,catByCode,ovr,setOverride,resetOverride,addProjComp,setProjComp,delProjComp,exportAHS,importAHS}){
+  const ahsImpRef=useRef();
+  const ahsBar=<div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:14,alignItems:"center"}}>
+    <input ref={ahsImpRef} type="file" accept=".xlsx,.xlsm,.csv" style={{display:"none"}} onChange={e=>{const f=e.target.files[0];if(f)importAHS(f);e.target.value="";}}/>
+    <button className="btn" onClick={exportAHS} title="Unduh kerangka AHS (per item BOQ) untuk diisi breakdown SBDY di Excel" style={{padding:"8px 13px",fontSize:12.5,display:"flex",gap:6,alignItems:"center",color:COL.ink}}><Download size={14}/>Export AHS</button>
+    <button className="btn" onClick={()=>ahsImpRef.current.click()} title="Upload AHS yang sudah diisi SBDY — kode & sumber daya auto ter-generate" style={{padding:"8px 14px",fontSize:12.5,display:"flex",gap:6,alignItems:"center",background:COL.steel,color:"#fff",borderColor:COL.steel}}><Upload size={14}/>Import AHS (isi SBDY)</button>
+    <span style={{fontSize:11.5,color:COL.sub,fontFamily:FM}}>Excel: kode ahs · klasifikasi SD (material/upah/alat/subkon) · item ahs · satuan · koef SD</span>
+  </div>;
   const usage=useMemo(()=>{const m={};itemRows.forEach(r=>{if(r.code==null)return;const v=parseFloat(r.vol);if(isNaN(v))return;if(!m[r.code])m[r.code]={vol:0,n:0};m[r.code].vol+=v;m[r.code].n++;});return m;},[itemRows]);
   const used=useMemo(()=>Object.keys(usage).map(Number).filter(c=>ahs[c]||addc[c]).sort((a,b)=>((rates[b]?.ur||0)*usage[b].vol)-((rates[a]?.ur||0)*usage[a].vol)),[usage,ahs,addc,rates]);
   const [sel,setSel]=useState(null);const [q,setQ]=useState("");
   const cur=(sel!=null&&usage[sel]!=null&&(ahs[sel]||addc[sel]))?sel:used[0];
-  if(used.length===0) return <div style={{background:COL.panel,borderRadius:16,padding:"56px 24px",textAlign:"center",boxShadow:SHADOW}}>
+  if(used.length===0) return <div>{ahsBar}<div style={{background:COL.panel,borderRadius:16,padding:"56px 24px",textAlign:"center",boxShadow:SHADOW}}>
     <Layers size={26} color={COL.sub}/><div style={{fontFamily:FD,fontWeight:600,fontSize:16,marginTop:10}}>Belum ada AHS aktif</div>
-    <div style={{color:COL.sub,fontSize:13,marginTop:6,maxWidth:460,marginInline:"auto",lineHeight:1.5}}>AHS muncul otomatis mengikuti volume <b>BOQ Client</b>. Upload atau isi BOQ di tab pertama, beri kode itemnya, lalu analisa yang terpakai akan tampil di sini. Untuk membuat analisa baru, buka tab <b>AHS Master</b>.</div></div>;
+    <div style={{color:COL.sub,fontSize:13,marginTop:6,maxWidth:460,marginInline:"auto",lineHeight:1.5}}>AHS muncul otomatis mengikuti volume <b>BOQ Client</b>. Upload atau isi BOQ di tab pertama, beri kode itemnya (atau <b>Auto AHS</b>), lalu analisa yang terpakai tampil di sini. Bisa juga <b>Import AHS</b> dari Excel di atas.</div></div></div>;
   const vol=usage[cur]?usage[cur].vol:0;const nLines=usage[cur]?usage[cur].n:0;const b=rates[cur];const amount=b?b.ur*vol:0;
   const ql=q.trim().toLowerCase();
   const matches=ql?Object.keys(meta).map(rc=>({rc,...meta[rc]})).filter(m=>(m.rc+" "+(m.n||"")).toLowerCase().includes(ql)).slice(0,8):[];
   return <div>
+    {ahsBar}
     <div style={{fontSize:12.5,color:COL.sub,marginBottom:14}}>Menampilkan <b>{used.length}</b> analisa yang dipakai BOQ client. Kode yang sama dari beberapa baris BOQ <b>dikonsolidasi jadi satu</b> dengan volume total.</div>
     <div style={{display:"grid",gridTemplateColumns:"330px 1fr",gap:18,alignItems:"start"}}>
       <div style={{background:COL.panel,borderRadius:16,overflow:"hidden",boxShadow:SHADOW}}>
@@ -609,7 +668,8 @@ function AhsTab({itemRows,ahs,addc,meta,prices,rates,names,catByCode,ovr,setOver
 }
 
 /* ---------- AHS MASTER TAB (library — create & edit analyses) ---------- */
-function AhsMasterTab({ahs,setQty,setGroup,addComponent,delComponent,addAhsItem,meta,prices,rates,names,catByCode,ahsmRef,readAhsM,dlTemplate,clearAhs}){
+function AhsMasterTab({ahs,setQty,setGroup,addComponent,delComponent,addAhsItem,meta,prices,rates,names,catByCode,ahsmRef,readAhsM,dlTemplate,clearAhs,openMaster,exportMaster,loadBundledMaster}){
+  const mjsonRef=useRef();
   const codes=useMemo(()=>Object.keys(ahs).map(Number).filter(c=>catByCode[c]).sort((a,b)=>(rates[b]?.ur||0)-(rates[a]?.ur||0)),[ahs,rates,catByCode]);
   const [sel,setSel]=useState(codes[0]);
   const [f,setF]=useState("");
@@ -630,8 +690,14 @@ function AhsMasterTab({ahs,setQty,setGroup,addComponent,delComponent,addAhsItem,
         <div style={{display:"flex",alignItems:"center",gap:6,border:`1px solid ${COL.line}`,borderRadius:8,padding:"6px 9px",marginBottom:8}}><Search size={13} color={COL.sub}/>
           <input value={f} onChange={e=>setF(e.target.value)} placeholder="cari analisa…" style={{border:"none",fontSize:12.5,width:"100%"}}/></div>
         <div style={{display:"flex",gap:6,marginBottom:8}}>
+          <input ref={mjsonRef} type="file" accept=".json" style={{display:"none"}} onChange={e=>{const fl=e.target.files[0];if(fl)openMaster(fl);e.target.value="";}}/>
+          <button className="btn" onClick={()=>mjsonRef.current.click()} title="Muat AHS Master + sumber daya dari file JSON" style={{flex:1,padding:"7px",fontSize:12,display:"flex",gap:5,alignItems:"center",justifyContent:"center",background:COL.steel,color:"#fff",borderColor:COL.steel}}><Upload size={13}/>Open AHS Master</button>
+          <button className="btn" onClick={exportMaster} title="Simpan AHS Master + sumber daya ke file JSON" style={{flex:1,padding:"7px",fontSize:12,display:"flex",gap:5,alignItems:"center",justifyContent:"center",color:COL.ink}}><Download size={13}/>Export</button>
+        </div>
+        <button className="btn" onClick={loadBundledMaster} title="Muat master bawaan R.6 (422 item + 518 sumber daya)" style={{width:"100%",padding:"7px",fontSize:12,marginBottom:8,color:COL.sub}}>Muat master bawaan (R.6)</button>
+        <div style={{display:"flex",gap:6,marginBottom:8}}>
           <input ref={ahsmRef} type="file" accept=".xlsx,.xlsm,.csv" style={{display:"none"}} onChange={e=>{const fl=e.target.files[0];if(fl)readAhsM(fl);e.target.value="";}}/>
-          <button className="btn" onClick={()=>ahsmRef.current.click()} style={{flex:1,padding:"7px",fontSize:12,display:"flex",gap:5,alignItems:"center",justifyContent:"center",color:COL.sub}}><Upload size={13}/>Upload</button>
+          <button className="btn" onClick={()=>ahsmRef.current.click()} style={{flex:1,padding:"7px",fontSize:12,display:"flex",gap:5,alignItems:"center",justifyContent:"center",color:COL.sub}}><Upload size={13}/>Upload Excel</button>
           <button className="btn" onClick={()=>dlTemplate("ahs")} style={{flex:1,padding:"7px",fontSize:12,color:COL.sub}}>Template</button>
           <button className="btn" onClick={clearAhs} title="Hapus semua AHS" style={{padding:"7px 10px",fontSize:12,color:COL.red,display:"flex",alignItems:"center"}}><Trash2 size={14}/></button>
         </div>
