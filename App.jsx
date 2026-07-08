@@ -368,18 +368,21 @@ function Studio({discipline,hidden,onReport}){
     (addc[r.code]||[]).forEach(c=>{m[c.rc]=(m[c.rc]||0)+v*(c.q||0);});});return m;},[itemRows,ahs,addc,ovr]);
 
   function exportXlsx(){
-    // layout mirrors imported client BOQ; UNIT RATE = value, AMOUNT = live formula (=rate*vol), TOTAL = SUM formula
-    const head=["KODE","NO","ITEM PEKERJAAN","UNIT","VOL","UNIT RATE","AMOUNT","CATATAN"];
+    // Unit Rate terpecah: MATERIAL/UPAH/ALAT/SUBKON -> UNIT RATE (=jumlah) -> AMOUNT (=unit rate * vol)
+    const head=["KODE","NO","ITEM PEKERJAAN","UNIT","VOL","MATERIAL","UPAH","ALAT","SUBKON","UNIT RATE","AMOUNT"];
     const aoa=[head];const formulaRows=[];let no=0;
-    priced.forEach(r=>{if(String(r.item).trim()==="")return;no++;
-      aoa.push([r.code??"",no,r.item,r.unit,r.vol===""?"":parseFloat(r.vol),r.ur??"",null,r.code==null?"PERLU KODE":(catByCode[r.code]?catByCode[r.code].n:"")]);
-      formulaRows.push(aoa.length);}); // excel row number (1-based) of this data row
-    const totalRowIdx=aoa.length+1; aoa.push(["","","TOTAL","","","",null,""]);
+    priced.forEach(r=>{if(String(r.item).trim()==="")return;no++;const rt=r.rt;
+      aoa.push([r.code??"",no,r.item,r.unit,r.vol===""?"":parseFloat(r.vol),
+        rt?rt.m:"",rt?rt.l:"",rt?rt.q:"",rt?rt.s:"",null,null]);
+      formulaRows.push(aoa.length);});
+    const totalRowIdx=aoa.length+1; aoa.push(["","","TOTAL","","","","","","",null,null]);
     const ws=XLSX.utils.aoa_to_sheet(aoa);
-    // AMOUNT (col G) as formula = UNIT RATE (F) * VOL (E)
-    formulaRows.forEach(R=>{ws["G"+R]={t:"n",f:`F${R}*E${R}`};});
-    if(formulaRows.length){const first=formulaRows[0],last=formulaRows[formulaRows.length-1];ws["G"+totalRowIdx]={t:"n",f:`SUM(G${first}:G${last})`};}
-    ws["!cols"]=[{wch:9},{wch:5},{wch:34},{wch:7},{wch:9},{wch:15},{wch:18},{wch:30}];
+    // J = UNIT RATE = SUM(MATERIAL..SUBKON) ; K = AMOUNT = UNIT RATE * VOL
+    formulaRows.forEach(R=>{ws["J"+R]={t:"n",f:`SUM(F${R}:I${R})`};ws["K"+R]={t:"n",f:`J${R}*E${R}`};});
+    if(formulaRows.length){const first=formulaRows[0],last=formulaRows[formulaRows.length-1];
+      ["F","G","H","I"].forEach(C=>{ws[C+totalRowIdx]={t:"n",f:`SUM(${C}${first}:${C}${last})`};});
+      ws["K"+totalRowIdx]={t:"n",f:`SUM(K${first}:K${last})`};}
+    ws["!cols"]=[{wch:9},{wch:5},{wch:34},{wch:7},{wch:9},{wch:14},{wch:14},{wch:14},{wch:14},{wch:15},{wch:18}];
     const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,"BOQ Client");XLSX.writeFile(wb,"BOQ_Client_terisi.xlsx");}
 
   const TABS=[["boq","BOQ",Table2],["ahs","AHS",Layers],["ahsm","AHS Master",Library],["sbdy","SBDY",Boxes],["vendor","Vendor",Scale],["top","Top High Item",Flame]];
