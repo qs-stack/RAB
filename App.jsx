@@ -464,7 +464,16 @@ function BoqTab({priced,itemRows,total,matched,flagged,catalog,rates,upd,del,add
     <div style={{background:COL.panel,borderRadius:16,boxShadow:SHADOW}}>
       <div style={{display:"grid",gridTemplateColumns:GRID,gap:8,padding:"10px 14px",borderBottom:`1px solid ${COL.line}`,fontSize:10.5,letterSpacing:.7,textTransform:"uppercase",color:COL.sub,fontFamily:FM}}>
         <div>#</div><div>Item pekerjaan</div><div>Kode</div><div>Unit</div><div style={{textAlign:"right"}}>Vol</div><div style={{textAlign:"right"}}>Unit price · M/L/E/Sc</div><div style={{textAlign:"right"}}>Amount</div><div/></div>
-      {itemRows.length===0&&<div style={{padding:"40px",textAlign:"center",color:COL.sub,fontSize:13.5}}>Klik <b>Pakai contoh</b> atau <b>+ Baris</b> untuk mulai.</div>}
+      {itemRows.length===0&&<div style={{padding:"44px 28px",textAlign:"center"}}>
+        <div style={{fontFamily:FD,fontWeight:600,fontSize:16,color:COL.ink}}>Mulai isi BOQ</div>
+        <div style={{color:COL.sub,fontSize:13,margin:"6px auto 0",maxWidth:470,lineHeight:1.5}}>Upload file BOQ (Excel/CSV) untuk baca massal — kolom minimal: <b>Item pekerjaan · Unit · Volume</b> (kolom Kode opsional). Belum punya formatnya? Download template dulu. Bisa juga pakai contoh atau input manual.</div>
+        <div style={{display:"flex",gap:8,justifyContent:"center",flexWrap:"wrap",marginTop:18}}>
+          <button className="btn" onClick={()=>clientRef.current.click()} style={{padding:"9px 16px",fontSize:13,display:"flex",gap:6,alignItems:"center",background:COL.steel,color:"#fff",borderColor:COL.steel}}><Upload size={15}/>Upload BOQ</button>
+          <button className="btn" onClick={dlBoqTemplate} style={{padding:"9px 14px",fontSize:13,display:"flex",gap:6,alignItems:"center",color:COL.ink}}><Download size={15}/>Download template</button>
+          <button className="btn" onClick={loadDemo} style={{padding:"9px 14px",fontSize:13}}>Pakai contoh</button>
+          <button className="btn" onClick={addRow} style={{padding:"9px 14px",fontSize:13,display:"flex",gap:6,alignItems:"center"}}><Plus size={15}/>Baris manual</button>
+        </div>
+      </div>}
       {priced.map((r,i)=><BoqRow key={r.id} r={r} idx={i} grid={GRID} catalog={catalog} rates={rates} upd={upd} del={del}/>)}
     </div>
     <div style={{marginTop:14}}><Legend/></div>
