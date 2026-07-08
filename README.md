@@ -1,17 +1,12 @@
-# RAB System Studio (versi flat — semua file di root)
+# RAB System Studio
 
-PENTING: semua file di paket ini harus berada di **root** repository (tidak di dalam subfolder).
-Penyebab gagal sebelumnya: folder `src/` tidak ikut ter-upload ke GitHub.
+Single-file React app (App.jsx) untuk estimasi RAB lintas disiplin (CIVIL, MECHANICAL, PIPING, ELECTRICAL, INSTRUMENT) + Top All, Resume, dan Lembar Pengesahan.
 
 ## Jalankan lokal
-1. npm install
-2. npm run dev  → buka http://localhost:5173
+```
+npm install
+npm run dev
+```
 
-## Deploy (Vercel)
-1. Buat repo GitHub baru.
-2. "Add file → Upload files" → seret SEMUA file ini (index.html, main.jsx, App.jsx,
-   index.css, package.json, vite.config.js, dll) langsung ke area upload. Commit.
-3. Vercel → Add New Project → pilih repo → Deploy (setelan default).
-
-Cek di GitHub: pastikan main.jsx, App.jsx, index.css TERLIHAT di halaman utama repo.
-Kalau salah satu tidak ada, build akan gagal lagi.
+## Deploy
+Vite app biasa. Vercel/Netlify: build `vite build`, output `dist`.

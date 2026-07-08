@@ -44,6 +44,7 @@ function NumInput({value,onChange,thousands,style}){const [t,setT]=useState(null
 const DEMO=[["Galian tanah biasa","m3",2567],["Timbunan","m3",2231],["Soil Disposal","m3",109],
  ["Piling Work D600","m",599],["Piling Work D800","m",549],["Lean Concrete Fc 15","m3",334],["Beton Struktur Fc 25","m3",859]];
 let _id=1;const uid=()=>_id++;
+const AUTO_BASE=900000;   // kode ≥ ini = item hasil Auto AHS (quick estimate)
 const PREF={A:"m",C:"l",D:"q",E:"s"};const TAG={LM:"m",LB:"l",EQ:"q",SC:"s"};
 
 class ErrorBoundary extends React.Component{
@@ -103,6 +104,45 @@ function Studio({discipline,hidden,onReport}){
   const upd=(id,p)=>setRows(r=>r.map(x=>x.id===id?{...x,...p}:x));
   const del=id=>setRows(r=>r.filter(x=>x.id!==id));
   const clearCodes=()=>setRows(r=>r.map(x=>({...x,code:null})));
+
+  // ---- AUTO AHS: tiap item BOQ dapat 1 AHS unik (nama = nama BOQ) ----
+  const autoAHS=()=>{
+    const usedAuto=new Set([...Object.keys(names),...catalog.map(c=>String(c.c))].map(Number).filter(n=>n>=AUTO_BASE));
+    let seq=AUTO_BASE;const nextCode=()=>{do{seq++;}while(usedAuto.has(seq));usedAuto.add(seq);return seq;};
+    const info={},ahsAdd={};
+    const newRows=rows.map(r=>{
+      if(String(r.item).trim()==="")return r;
+      let code=r.code;
+      if(code!=null&&code<AUTO_BASE)return r;                 // sudah punya kode master → biarkan
+      if(!(code!=null&&code>=AUTO_BASE))code=nextCode();      // belum berkode → kode auto baru
+      info[code]={n:r.item,u:r.unit||"Ls"};
+      if(!ahs[code])ahsAdd[code]=[];
+      return {...r,code};
+    });
+    setCatalog(c=>{const map=new Map(c.map(x=>[x.c,x]));
+      Object.keys(info).forEach(cs=>{const code=+cs,{n,u}=info[code];
+        map.set(code,map.has(code)?{...map.get(code),n,u}:{c:code,e:"AUTO",sec:"AUTO AHS",n,u});});
+      return [...map.values()];});
+    setNames(n=>{const o={...n};Object.keys(info).forEach(cs=>o[+cs]=info[+cs].n);return o;});
+    if(Object.keys(ahsAdd).length)setAhs(a=>({...a,...ahsAdd}));
+    setRows(newRows);
+  };
+  // ---- AUTO SBDY: tiap AHS-auto diisi sumber daya (nama = nama BOQ). mode 4 = Material/Upah/Alat/Subkon, mode 1 = Subkon saja ----
+  const autoSBDY=(mode)=>{
+    const metaAdd={},priceAdd={},ahsSet={};
+    rows.forEach(r=>{
+      if(String(r.item).trim()==="")return;
+      const X=r.code;if(!(X!=null&&X>=AUTO_BASE))return;      // hanya baris hasil Auto AHS
+      const nm=r.item,u=r.unit||"Ls";
+      const mk=(pfx,label,cat)=>{const rc=pfx+X;metaAdd[rc]={n:label+" "+nm,u,cat};if(prices[rc]==null)priceAdd[rc]=0;return rc;};
+      if(mode===4)ahsSet[X]=[{rc:mk("A","Material","m"),q:1},{rc:mk("C","Upah","l"),q:1},{rc:mk("D","Alat","q"),q:1},{rc:mk("E","Subkon","s"),q:1}];
+      else ahsSet[X]=[{rc:mk("E","Subkon","s"),q:1}];
+    });
+    if(!Object.keys(ahsSet).length)return;
+    setMeta(m=>({...m,...metaAdd}));
+    setPrices(p=>({...p,...priceAdd}));
+    setAhs(a=>({...a,...ahsSet}));
+  };
 
   // ---- upload pure client BOQ -> auto-generate rows + auto-codify ----
   function readClient(file){const fr=new FileReader();fr.onload=e=>{try{
@@ -240,6 +280,13 @@ function Studio({discipline,hidden,onReport}){
     if(kind==="sbdy"){d=[["Kode","Nama","Unit","Kategori","Harga","Keterangan"],["A0001","Semen PCC 50kg","zak","Material",62500,"Penawaran PT X 2025"],["C0001","Pekerja","OH","Labor",120000,""],["D0001","Sewa Excavator","jam","Equipment",450000,""]];name="template_SBDY.xlsx";}
     else{d=[["Kode AHS","Nama AHS","Unit","Kelompok","Kode SD","Koef"],[99001,"Pondasi Beton Contoh","m3","Beton","A0001",7.2],[99001,"","","Beton","C0001",1.65],[99001,"","","Besi","A0002",120],[99001,"","","Bekisting","A0003",4]];name="template_AHS_Master.xlsx";}
     const ws=XLSX.utils.aoa_to_sheet(d);const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,kind==="sbdy"?"SBDY":"AHS");XLSX.writeFile(wb,name);}
+  // ---- export SBDY (semua sumber daya + harga saat ini) untuk diisi di Excel lalu di-upload lagi ----
+  function exportSbdy(){
+    const codes=Object.keys(meta).sort((a,b)=>a<b?-1:1);
+    const d=[["Kode","Nama","Unit","Kategori","Harga","Keterangan"]];
+    codes.forEach(rc=>{const m=meta[rc]||{};d.push([rc,m.n||"",m.u||"",CATLBL[m.cat]||m.cat||"",prices[rc]!=null?prices[rc]:0,refs[rc]||""]);});
+    const ws=XLSX.utils.aoa_to_sheet(d);ws["!cols"]=[{wch:12},{wch:46},{wch:8},{wch:12},{wch:14},{wch:28}];
+    const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,"SBDY");XLSX.writeFile(wb,"SBDY_harga.xlsx");}
 
   const priced=rows.map(r=>{const rt=r.code!=null?projRates[r.code]:null;const v=parseFloat(r.vol);
     const amt=(rt&&!isNaN(v))?rt.ur*v:null;return{...r,rt,ur:rt?rt.ur:null,amt};});
@@ -328,10 +375,10 @@ function Studio({discipline,hidden,onReport}){
       </div>
 
       <ErrorBoundary tab={tab}>
-      {tab==="boq"&&<BoqTab {...{priced,itemRows,total,matched,flagged,catalog,rates,upd,del,addRow,loadDemo,readClient,clearRows,clearCodes}}/>}
+      {tab==="boq"&&<BoqTab {...{priced,itemRows,total,matched,flagged,catalog,rates,upd,del,addRow,loadDemo,readClient,clearRows,clearCodes,autoAHS,autoSBDY}}/>}
       {tab==="ahs"&&<AhsTab {...{itemRows,ahs,addc,meta,prices,rates:projRates,names,catByCode,ovr,setOverride,resetOverride,addProjComp,setProjComp,delProjComp}}/>}
       {tab==="ahsm"&&<AhsMasterTab {...{ahs,setQty,setGroup,addComponent,delComponent,addAhsItem,meta,prices,rates,names,catByCode,ahsmRef,readAhsM,dlTemplate,clearAhs}}/>}
-      {tab==="sbdy"&&<SbdyTab {...{meta,prices,setPrices,addResource,delResource,refs,setRefs,resQty,sbdyRef,readSbdy,dlTemplate,clearSbdy}}/>}
+      {tab==="sbdy"&&<SbdyTab {...{meta,prices,setPrices,addResource,delResource,refs,setRefs,resQty,sbdyRef,readSbdy,dlTemplate,clearSbdy,exportSbdy}}/>}
       {tab==="vendor"&&<VendorTab {...{meta,prices,setPrices,resQty,offers,addOffer,pushOffer,importOffers,setOfferName,setOfferPrice,setOfferDate,delOffer,useOffer,vgroups,setVgroups,vgroupOf,setVgroupOf}}/>}
       {tab==="top"&&<TopTab {...{itemRows,ahs,meta,prices,rates:projRates,names,catByCode,effQ,refs}}/>}
       </ErrorBoundary>
@@ -350,10 +397,11 @@ const Legend=()=>{return <div style={{display:"flex",gap:14,fontSize:11.5,color:
   {["m","l","q","s"].map(k=><span key={k} style={{display:"flex",gap:6,alignItems:"center"}}><span style={{width:12,height:6,borderRadius:3,background:CATCOL[k]}}/>{CATLBL[k]}</span>)}</div>;};
 
 /* ---------- BOQ TAB ---------- */
-function BoqTab({priced,itemRows,total,matched,flagged,catalog,rates,upd,del,addRow,loadDemo,readClient,clearRows,clearCodes}){
+function BoqTab({priced,itemRows,total,matched,flagged,catalog,rates,upd,del,addRow,loadDemo,readClient,clearRows,clearCodes,autoAHS,autoSBDY}){
   const GRID="24px 1.35fr 116px 54px 68px 178px 124px 28px";
   const clientRef=useRef();
-  const [applyOpen,setApplyOpen]=useState(false);const [armClear,setArmClear]=useState(false);
+  const [applyOpen,setApplyOpen]=useState(false);const [armClear,setArmClear]=useState(false);const [sbdyOpen,setSbdyOpen]=useState(false);
+  const hasAuto=priced.some(r=>r.code!=null&&r.code>=AUTO_BASE);
   const bestList=useMemo(()=>{const out=[];priced.forEach(r=>{if(r.code!=null||String(r.item).trim()==="")return;
     const b=catalog.map(c=>({c,s:score(r.item,r.unit,c)})).sort((x,y)=>y.s-x.s)[0];
     if(b&&b.s>0)out.push({id:r.id,code:b.c.c,tier:b.s>=4?"cocok":b.s>=2?"mungkin":"lemah"});});return out;},[priced,catalog]);
@@ -392,7 +440,20 @@ function BoqTab({priced,itemRows,total,matched,flagged,catalog,rates,upd,del,add
             :<div onClick={()=>{clearCodes();setArmClear(false);setApplyOpen(false);}} style={{padding:"8px 9px",borderRadius:7,cursor:"pointer",display:"flex",justifyContent:"space-between",alignItems:"center",background:"#FDECEC",color:COL.red}}><span style={{fontSize:12,fontWeight:600}}>Klik lagi untuk konfirmasi</span><span style={{fontSize:11,fontFamily:FM}}>{matched} kode</span></div>}
           </div>}
         </div>
-        <button className="btn" style={{padding:"7px 12px",fontSize:12.5,display:"flex",gap:6,alignItems:"center",background:COL.steel,color:"#fff",borderColor:COL.steel}} onClick={()=>clientRef.current.click()}><Upload size={14}/>Upload BOQ</button>
+        <div style={{width:1,background:COL.line,alignSelf:"stretch",margin:"2px 0"}}/>
+        <button className="btn" onClick={autoAHS} style={{padding:"7px 12px",fontSize:12.5,display:"flex",gap:6,alignItems:"center",color:"#fff",background:itemRows.length?COL.teal:COL.sub,borderColor:itemRows.length?COL.teal:COL.sub,opacity:itemRows.length?1:.5,cursor:itemRows.length?"pointer":"not-allowed"}} title="Buat 1 AHS unik untuk tiap item BOQ (nama AHS = nama BOQ)"><Layers size={14}/>Auto AHS</button>
+        <div style={{position:"relative"}}>
+          <button className="btn" onClick={()=>hasAuto&&setSbdyOpen(o=>!o)} style={{padding:"7px 12px",fontSize:12.5,display:"flex",gap:6,alignItems:"center",color:"#fff",background:hasAuto?"#7C3AED":COL.sub,borderColor:hasAuto?"#7C3AED":COL.sub,opacity:hasAuto?1:.5,cursor:hasAuto?"pointer":"not-allowed"}} title={hasAuto?"Isi sumber daya tiap AHS-auto":"Klik Auto AHS dulu"}><Boxes size={14}/>Auto SBDY ▾</button>
+          {sbdyOpen&&hasAuto&&<div style={{position:"absolute",top:"108%",right:0,zIndex:30,width:280,background:COL.panel,border:`1px solid ${COL.line}`,borderRadius:10,boxShadow:"0 12px 30px rgba(15,30,51,.16)",padding:6}} onMouseLeave={()=>setSbdyOpen(false)}>
+            <div style={{fontSize:10,color:COL.sub,fontFamily:FM,padding:"3px 8px 6px",textTransform:"uppercase",letterSpacing:.5}}>Rincian sumber daya per AHS (nama = nama BOQ)</div>
+            <div className="sugg" onClick={()=>{autoSBDY(1);setSbdyOpen(false);}} style={{padding:"9px 9px",borderRadius:7,cursor:"pointer"}}>
+              <div style={{fontSize:12.5,fontWeight:600,display:"flex",gap:7,alignItems:"center"}}><span style={{width:8,height:8,borderRadius:8,background:COL.amber}}/>1 SBDY — Subkon saja</div>
+              <div style={{fontFamily:FM,fontSize:10.5,color:COL.sub,marginTop:3,marginLeft:15}}>E··· Subkon [nama]</div></div>
+            <div className="sugg" onClick={()=>{autoSBDY(4);setSbdyOpen(false);}} style={{padding:"9px 9px",borderRadius:7,cursor:"pointer"}}>
+              <div style={{fontSize:12.5,fontWeight:600,display:"flex",gap:7,alignItems:"center"}}><span style={{width:8,height:8,borderRadius:8,background:COL.steel}}/>4 SBDY — Material / Upah / Alat / Subkon</div>
+              <div style={{fontFamily:FM,fontSize:10.5,color:COL.sub,marginTop:3,marginLeft:15}}>A··· Material · C··· Upah · D··· Alat · E··· Subkon</div></div>
+          </div>}
+        </div>
         <input ref={clientRef} type="file" accept=".xlsx,.xlsm,.csv" style={{display:"none"}} onChange={e=>{const f=e.target.files[0];if(f)readClient(f);e.target.value="";}}/>
         <button className="btn" style={{padding:"7px 12px",fontSize:12.5,display:"flex",gap:6,alignItems:"center",color:COL.sub}} onClick={dlBoqTemplate}><Download size={14}/>Template</button>
         <button className="btn" style={{padding:"7px 12px",fontSize:12.5}} onClick={loadDemo}>Pakai contoh</button>
@@ -635,7 +696,7 @@ function AhsMasterTab({ahs,setQty,setGroup,addComponent,delComponent,addAhsItem,
 }
 
 /* ---------- SBDY TAB ---------- */
-function SbdyTab({meta,prices,setPrices,addResource,delResource,refs,setRefs,resQty,sbdyRef,readSbdy,dlTemplate,clearSbdy}){
+function SbdyTab({meta,prices,setPrices,addResource,delResource,refs,setRefs,resQty,sbdyRef,readSbdy,dlTemplate,clearSbdy,exportSbdy}){
   const [f,setF]=useState("");const [cat,setCat]=useState("all");const [addOpen,setAddOpen]=useState(false);const [vf,setVf]=useState("all");
   const [aC,setAC]=useState(""),[aN,setAN]=useState(""),[aU,setAU]=useState(""),[aCat,setACat]=useState("m"),[aP,setAP]=useState("");
   const all=useMemo(()=>Object.keys(meta).map(k=>({rc:k,...meta[k]})).sort((a,b)=>a.rc<b.rc?-1:1),[meta]);
@@ -654,6 +715,7 @@ function SbdyTab({meta,prices,setPrices,addResource,delResource,refs,setRefs,res
         <input value={f} onChange={e=>setF(e.target.value)} placeholder="cari kode / nama / keterangan sumber harga…" style={{border:"none",fontSize:13,width:"100%"}}/></div>
       <input ref={sbdyRef} type="file" accept=".xlsx,.xlsm,.csv" style={{display:"none"}} onChange={e=>{const fl=e.target.files[0];if(fl)readSbdy(fl);e.target.value="";}}/>
       <button className="btn" onClick={()=>dlTemplate("sbdy")} style={{padding:"7px 11px",fontSize:12,color:COL.sub}}>Template</button>
+      <button className="btn" onClick={exportSbdy} style={{padding:"7px 11px",fontSize:12,display:"flex",gap:6,alignItems:"center",color:"#fff",background:COL.teal,borderColor:COL.teal}} title="Unduh semua sumber daya + harga ke Excel untuk diisi cepat, lalu upload lagi"><Download size={14}/>Export SBDY</button>
       <button className="btn" onClick={()=>sbdyRef.current.click()} style={{padding:"7px 11px",fontSize:12,display:"flex",gap:6,alignItems:"center",color:COL.sub}}><Upload size={14}/>Upload SBDY</button>
       <button className="btn" onClick={()=>setAddOpen(o=>!o)} style={{padding:"7px 12px",fontSize:12.5,display:"flex",gap:6,alignItems:"center",background:COL.steel,color:"#fff",borderColor:COL.steel}}><Plus size={14}/>Sumber daya</button>
       <button className="btn" onClick={clearSbdy} style={{padding:"7px 11px",fontSize:12,display:"flex",gap:6,alignItems:"center",color:COL.red,opacity:all.length?1:.45,pointerEvents:all.length?"auto":"none"}}><Trash2 size={14}/>Hapus semua</button>
@@ -1028,9 +1090,9 @@ function PengesahanView({reports,hidden}){
   const [secE,setSecE]=useState(()=>PE_DEF.map((r,i)=>({id:"e"+i,desc:r[0],mode:r[1],pct:r[2],amt:r[3]})));
   const [mosPct,setMosPct]=useState(0.08);
   const upA=(id,k,v)=>setSecA(s=>s.map(r=>r.id===id?{...r,[k]:v}:r)),delA=id=>setSecA(s=>s.filter(r=>r.id!==id)),addA=()=>setSecA(s=>[...s,{id:nid("a"),desc:"",unit:"Ls",qty:1,rate:0}]);
-  const upC=(id,k,v)=>setSecC(s=>s.map(r=>r.id===id?{...r,[k]:v}:r)),delC=id=>setSecC(s=>s.filter(r=>r.id!==id)),addC=()=>setSecC(s=>[...s,{id:nid("c"),desc:"",unit:"Ls",qty:1,rate:0}]);
+  const upC=(id,k,v)=>setSecC(s=>s.map(r=>r.id===id?{...r,[k]:v}:r)),delC=id=>setSecC(s=>s.filter(r=>r.id!==id)),addC=(mode="calc")=>setSecC(s=>[...s,{id:nid("c"),desc:"",unit:"Ls",qty:1,rate:0,amt:0,mode}]);
   const upD=(id,k,v)=>setSecD(s=>s.map(r=>r.id===id?{...r,[k]:v}:r)),delD=id=>setSecD(s=>s.filter(r=>r.id!==id)),addD=()=>setSecD(s=>[...s,{id:nid("d"),desc:"",pct:0}]);
-  const upE=(id,k,v)=>setSecE(s=>s.map(r=>r.id===id?{...r,[k]:v}:r)),delE=id=>setSecE(s=>s.filter(r=>r.id!==id)),addE=()=>setSecE(s=>[...s,{id:nid("e"),desc:"",mode:"pct",pct:0,amt:0}]);
+  const upE=(id,k,v)=>setSecE(s=>s.map(r=>r.id===id?{...r,[k]:v}:r)),delE=id=>setSecE(s=>s.filter(r=>r.id!==id)),addE=(mode="pct")=>setSecE(s=>[...s,{id:nid("e"),desc:"",mode,pct:0,amt:0}]);
 
   const MONTHS=["Januari","Februari","Maret","April","Mei","Juni","Juli","Agustus","September","Oktober","November","Desember"];
   const _td=new Date();const todayStr=_td.getDate()+" "+MONTHS[_td.getMonth()]+" "+_td.getFullYear();
@@ -1039,12 +1101,15 @@ function PengesahanView({reports,hidden}){
   const [signs,setSigns]=useState([{id:"s0",role:"Dibuat oleh",name:"",position:"Estimator"},{id:"s1",role:"Diperiksa oleh",name:"",position:"Manajer Estimasi"},{id:"s2",role:"Disetujui oleh",name:"",position:"General Manager"}]);
   const upS=(id,k,v)=>setSigns(s=>s.map(r=>r.id===id?{...r,[k]:v}:r)),delS=id=>setSigns(s=>s.filter(r=>r.id!==id)),addS=()=>setSigns(s=>[...s,{id:nid("s"),role:"Mengetahui",name:"",position:""}]);
   const [savedDirect,setSavedDirect]=useState(null);
+  const [metaOpen,setMetaOpen]=useState(false);
+  const [open,setOpen]=useState({A:true,B:true,C:true,D:true,E:true});
+  const toggle=k=>setOpen(o=>({...o,[k]:!o[k]}));
   const fileRef=useRef(null);
   const liveB=DISCIPLINES.map(d=>({d,total:(reports[d]&&reports[d].total)||0})).filter(x=>x.total>0);
   const bRows=liveB.length?liveB:(savedDirect||[]);
   const A=secA.reduce((s,r)=>s+(r.qty||0)*(r.rate||0),0);
   const B=bRows.reduce((s,r)=>s+r.total,0);
-  const C=secC.reduce((s,r)=>s+(r.qty||0)*(r.rate||0),0);
+  const C=secC.reduce((s,r)=>s+((r.mode==="amt")?(r.amt||0):(r.qty||0)*(r.rate||0)),0);
   const FIXED=A+B+C;
   const dPct=secD.reduce((s,r)=>s+(r.pct||0),0);
   const ePctSum=secE.filter(r=>r.mode==="pct").reduce((s,r)=>s+(r.pct||0),0);
@@ -1067,11 +1132,11 @@ function PengesahanView({reports,hidden}){
     const sub=(label,amt,pct)=>`<tr class="sub"><td></td><td>${label}</td><td></td><td></td><td></td><td class="r b">${amt}</td><td class="r">${pct}</td></tr>`;
     const sh=(letter,title,bg)=>`<tr class="sh"><td colspan="5" style="background:${bg}">${letter} &nbsp;&nbsp; ${esc(title)}</td><td class="r" style="background:${bg}"></td><td style="background:${bg}"></td></tr>`;
     let rows="";
-    rows+=sh("A","SITE PREPARATION","#E8EAFD");secA.forEach((r,i)=>{const a=(r.qty||0)*(r.rate||0);rows+=tr(i+1,r.desc,r.unit,grp(r.qty),rp(r.rate),rp(a),pc(a));});rows+=sub("SUB-TOTAL A",rp(A),pc(A));
-    rows+=sh("B","DIRECT COST","#E1F2F0");bRows.forEach((r,i)=>{rows+=tr("B."+(i+1),r.d,"Ls","1","dari Resume",rp(r.total),pc(r.total));});rows+=sub("SUB-TOTAL B",rp(B),pc(B));
-    rows+=sh("C","INDIRECT COST","#FCEFD9");secC.forEach((r,i)=>{const a=(r.qty||0)*(r.rate||0);rows+=tr("C."+(i+1),r.desc,r.unit,grp(r.qty),rp(r.rate),rp(a),pc(a));});rows+=sub("SUB-TOTAL C",rp(C),pc(C));
-    rows+=sh("D","UNCOVERABLE CONSTRUCTION RISK","#FCE3E9");secD.forEach((r,i)=>{const a=(r.pct||0)*SALES;rows+=tr("D."+(i+1),r.desc,"%",(r.pct*100).toFixed(2)+"%","x Sales",rp(a),pc(a));});rows+=sub("SUB-TOTAL D",rp(D),pc(D));
-    rows+=sh("E","OTHER EXPENSE","#EFE7FB");secE.forEach((r,i)=>{const a=r.mode==="pct"?(r.pct||0)*SALES:(r.amt||0);const q=r.mode==="pct"?(r.pct*100).toFixed(2)+"%":"";const rt=r.mode==="pct"?"x Sales":"nominal";rows+=tr("E."+(i+1),r.desc,r.mode==="pct"?"%":"Rp",q,rt,rp(a),pc(a));});rows+=sub("SUB-TOTAL E",rp(E),pc(E));
+    rows+=sh("A","SITE PREPARATION","#E8EAFD");if(open.A)secA.forEach((r,i)=>{const a=(r.qty||0)*(r.rate||0);rows+=tr(i+1,r.desc,r.unit,grp(r.qty),rp(r.rate),rp(a),pc(a));});rows+=sub("SUB-TOTAL A",rp(A),pc(A));
+    rows+=sh("B","DIRECT COST","#E1F2F0");if(open.B)bRows.forEach((r,i)=>{rows+=tr("B."+(i+1),r.d,"Ls","1","dari Resume",rp(r.total),pc(r.total));});rows+=sub("SUB-TOTAL B",rp(B),pc(B));
+    rows+=sh("C","INDIRECT COST","#FCEFD9");if(open.C)secC.forEach((r,i)=>{const m=r.mode||"calc";const a=m==="amt"?(r.amt||0):(r.qty||0)*(r.rate||0);rows+=tr("C."+(i+1),r.desc,r.unit,m==="amt"?"":grp(r.qty),m==="amt"?"nominal":rp(r.rate),rp(a),pc(a));});rows+=sub("SUB-TOTAL C",rp(C),pc(C));
+    rows+=sh("D","UNCOVERABLE CONSTRUCTION RISK","#FCE3E9");if(open.D)secD.forEach((r,i)=>{const a=(r.pct||0)*SALES;rows+=tr("D."+(i+1),r.desc,"%",(r.pct*100).toFixed(2)+"%","x Sales",rp(a),pc(a));});rows+=sub("SUB-TOTAL D",rp(D),pc(D));
+    rows+=sh("E","OTHER EXPENSE","#EFE7FB");if(open.E)secE.forEach((r,i)=>{const a=r.mode==="pct"?(r.pct||0)*SALES:(r.amt||0);const q=r.mode==="pct"?(r.pct*100).toFixed(2)+"%":"";const rt=r.mode==="pct"?"x Sales":"nominal";rows+=tr("E."+(i+1),r.desc,r.mode==="pct"?"%":"Rp",q,rt,rp(a),pc(a));});rows+=sub("SUB-TOTAL E",rp(E),pc(E));
     rows+=`<tr class="grand"><td></td><td>SUB-TOTAL A + B + C + D + E</td><td></td><td></td><td></td><td class="r b">${rp(subABCDE)}</td><td class="r">${pc(subABCDE)}</td></tr>`;
     rows+=`<tr class="mos"><td></td><td>MOS &middot; Margin on Sales</td><td class="c">%</td><td class="r">${(mosPct*100).toFixed(2)}%</td><td class="r">x Sales</td><td class="r b">${rp(MOS)}</td><td class="r">${(mosPct*100).toFixed(2)}%</td></tr>`;
     rows+=`<tr class="sales"><td></td><td>SALES &middot; NILAI PENAWARAN</td><td></td><td></td><td></td><td class="r b">${rp(SALES)}</td><td class="r">100%</td></tr>`;
@@ -1126,6 +1191,9 @@ tr.sales td{background:#141821;color:#fff;font-weight:800;font-size:11px;}
   const colHead=<div style={{display:"grid",gridTemplateColumns:PGRID,gap:6,padding:"9px 14px",background:"#11151C",color:"rgba(255,255,255,.75)",fontFamily:FM,fontSize:10,letterSpacing:.5,textTransform:"uppercase",borderRadius:"14px 14px 0 0"}}>
     <div style={{textAlign:"center"}}>No</div><div>Description</div><div style={{textAlign:"center"}}>Unit</div><div style={{textAlign:"right"}}>Qty</div><div style={{textAlign:"right"}}>Unit Rate</div><div style={{textAlign:"right"}}>Amount</div><div style={{textAlign:"right"}}>%</div><div/></div>;
 
+  const secBand=(letter,title,val,bg,key)=><div onClick={()=>toggle(key)} title={open[key]?"klik untuk sembunyikan rincian":"klik untuk tampilkan rincian"} style={{...band(bg),cursor:"pointer",userSelect:"none"}}>
+    <span style={{fontFamily:FM,fontSize:12,width:13,textAlign:"center",opacity:.95}}>{open[key]?"▾":"▸"}</span>{bL(letter)}{bT(title)}{bAmt(val)}</div>;
+
   const parts=[["A",A,COL.steel],["B",B,COL.teal],["C",C,COL.amber],["D",D,"#E11D48"],["E",E,"#7C3AED"],["MOS",MOS,COL.green]];
 
   return <div style={{display:hidden?"none":undefined,background:COL.paper,minHeight:"100vh"}}>
@@ -1137,18 +1205,20 @@ tr.sales td{background:#141821;color:#fff;font-weight:800;font-size:11px;}
         <button onClick={saveP} style={{display:"inline-flex",alignItems:"center",gap:6,border:"1px solid "+COL.line,background:"#fff",color:COL.ink,borderRadius:9,padding:"8px 14px",fontSize:12.5,fontFamily:FB,fontWeight:600,cursor:"pointer"}}><Download size={14}/>Simpan</button>
         <button onClick={()=>fileRef.current&&fileRef.current.click()} style={{display:"inline-flex",alignItems:"center",gap:6,border:"1px solid "+COL.line,background:"#fff",color:COL.ink,borderRadius:9,padding:"8px 14px",fontSize:12.5,fontFamily:FB,fontWeight:600,cursor:"pointer"}}><Upload size={14}/>Buka</button>
         <button onClick={exportPDF} style={{display:"inline-flex",alignItems:"center",gap:6,border:"none",background:COL.steel,color:"#fff",borderRadius:9,padding:"8px 16px",fontSize:12.5,fontFamily:FB,fontWeight:600,cursor:"pointer"}}><FileSpreadsheet size={14}/>Export PDF</button>
+        <button onClick={()=>setMetaOpen(o=>!o)} style={{display:"inline-flex",alignItems:"center",gap:6,border:"1px solid "+COL.line,background:metaOpen?"#EEF0FE":"#fff",color:metaOpen?COL.steel:COL.ink,borderRadius:9,padding:"8px 14px",fontSize:12.5,fontFamily:FB,fontWeight:600,cursor:"pointer"}}><span style={{fontFamily:FM,fontSize:12}}>{metaOpen?"▾":"▸"}</span>Detail dokumen</button>
         <input ref={fileRef} type="file" accept=".json" style={{display:"none"}} onChange={e=>{const f=e.target.files[0];if(f)loadP(f);e.target.value="";}}/>
       </div>
-      <div style={{background:COL.panel,borderRadius:14,boxShadow:SHADOW,padding:"14px 16px",marginBottom:18,display:"grid",gridTemplateColumns:"1fr 1fr",gap:"11px 16px"}}>
+      {metaOpen&&<div style={{background:COL.panel,borderRadius:14,boxShadow:SHADOW,padding:"14px 16px",marginBottom:18,display:"grid",gridTemplateColumns:"1fr 1fr",gap:"11px 16px"}}>
         {[["title","Judul dokumen",0],["subtitle","Sub-judul",0],["project","Proyek (nama - lokasi - tahun)",1],["place","Tempat",0],["date","Tanggal",0],["company","Perusahaan",0],["division","Divisi / Unit",0]].map(([k,lbl,full])=>
           <label key={k} style={{display:"block",gridColumn:full?"1 / -1":undefined}}>
             <span style={{fontFamily:FM,fontSize:10,color:COL.sub,textTransform:"uppercase",letterSpacing:.5}}>{lbl}</span>
             <input value={meta[k]} onChange={e=>upMeta(k,e.target.value)} style={{...inp("left"),marginTop:4}}/></label>)}
-      </div>
+      </div>}
 
       {!valid&&<div style={{background:"#FEECEC",border:"1px solid "+COL.red,color:COL.red,borderRadius:12,padding:"12px 16px",marginBottom:16,fontSize:13,fontFamily:FB,fontWeight:500}}>Total persentase D + E + MOS = {((dPct+ePctSum+(mosPct||0))*100).toFixed(2)}% (≥ 100%). Sales tidak bisa dihitung. Turunkan persentasenya.</div>}
 
-      <div style={{display:"grid",gridTemplateColumns:"1.25fr 1fr 1.15fr",gap:14,marginBottom:20}}>
+      <div style={{position:"sticky",top:48,zIndex:30,background:COL.paper}}>
+      <div style={{display:"grid",gridTemplateColumns:"1.25fr 1fr 1.15fr",gap:14,paddingTop:4,paddingBottom:14}}>
         <div style={{background:"linear-gradient(135deg,#4F46E5,#7C3AED)",borderRadius:18,padding:"22px 24px",color:"#fff",boxShadow:SHADOW}}>
           <div style={{fontFamily:FM,fontSize:11,letterSpacing:1,opacity:.85,textTransform:"uppercase"}}>Sales · Nilai Penawaran</div>
           <div style={{fontFamily:FD,fontWeight:800,fontSize:29,marginTop:6,lineHeight:1.1}}>Rp {rp(SALES)}</div>
@@ -1164,30 +1234,39 @@ tr.sales td{background:#141821;color:#fff;font-weight:800;font-size:11px;}
           <div style={{display:"flex",gap:9,flexWrap:"wrap",marginTop:9}}>
             {parts.map(p=><div key={p[0]} style={{display:"flex",alignItems:"center",gap:4}}><span style={{width:8,height:8,borderRadius:2,background:p[2]}}/><span style={{fontFamily:FM,fontSize:10.5,color:COL.sub}}>{p[0]} {(pof(p[1])*100).toFixed(1)}%</span></div>)}</div></div>
       </div>
+      {colHead}
+      </div>
 
-      <div style={{background:COL.panel,borderRadius:16,boxShadow:SHADOW,overflow:"hidden"}}>
-        {colHead}
-        <div style={band(COL.steel)}>{bL("A")}{bT("SITE PREPARATION")}{bAmt(A)}</div>
-        {secA.map((r,i)=>costRow(r,i+1,upA,delA))}
+      <div style={{background:COL.panel,borderRadius:"0 0 16px 16px",boxShadow:SHADOW,overflow:"hidden"}}>
+        {secBand("A","SITE PREPARATION",A,COL.steel,"A")}
+        {open.A&&<>{secA.map((r,i)=>costRow(r,i+1,upA,delA))}
         <div style={{padding:"0 0 6px"}}><button onClick={addA} style={addBtn}><Plus size={13}/>tambah item A</button></div>
-        {subRow("SUB-TOTAL A",A,COL.steel)}
+        {subRow("SUB-TOTAL A",A,COL.steel)}</>}
 
-        <div style={band(COL.teal)}>{bL("B")}{bT("DIRECT COST · dari Resume disiplin")}{bAmt(B)}</div>
-        {bRows.length===0?<div style={{padding:"16px 16px",color:COL.sub,fontSize:12.5,fontFamily:FB}}>Belum ada disiplin berisi data. Buka &amp; kerjakan RAB tiap disiplin (CIVIL, MECHANICAL, dst.), nilainya otomatis masuk ke sini.</div>
+        {secBand("B","DIRECT COST · dari Resume disiplin",B,COL.teal,"B")}
+        {open.B&&<>{bRows.length===0?<div style={{padding:"16px 16px",color:COL.sub,fontSize:12.5,fontFamily:FB}}>Belum ada disiplin berisi data. Buka &amp; kerjakan RAB tiap disiplin (CIVIL, MECHANICAL, dst.), nilainya otomatis masuk ke sini.</div>
         :bRows.map((r,i)=><div key={r.d} style={ROW}>
           <div style={cNo}>B.{i+1}</div>
           <div style={{display:"flex",alignItems:"center",gap:8}}><span style={{width:10,height:10,borderRadius:3,background:DISC_COL[r.d]}}/><span style={{fontFamily:FB,fontWeight:600,fontSize:12.5,color:COL.ink}}>{r.d}</span></div>
           <div style={{textAlign:"center",fontFamily:FM,fontSize:12,color:COL.sub}}>Ls</div><div style={{textAlign:"right",fontFamily:FM,fontSize:12,color:COL.sub}}>1</div>
           <div style={muted}>dari Resume</div><div style={cAmt}>{rp(r.total)}</div><div style={cPct}>{(pof(r.total)*100).toFixed(2)}%</div><div/></div>)}
-        {subRow("SUB-TOTAL B",B,COL.teal)}
+        {subRow("SUB-TOTAL B",B,COL.teal)}</>}
 
-        <div style={band(COL.amber)}>{bL("C")}{bT("INDIRECT COST")}{bAmt(C)}</div>
-        {secC.map((r,i)=>costRow(r,"C."+(i+1),upC,delC))}
-        <div style={{padding:"0 0 6px"}}><button onClick={addC} style={addBtn}><Plus size={13}/>tambah item C</button></div>
-        {subRow("SUB-TOTAL C",C,COL.amber)}
+        {secBand("C","INDIRECT COST",C,COL.amber,"C")}
+        {open.C&&<>{secC.map((r,i)=>{const m=r.mode||"calc";const amt=m==="amt"?(r.amt||0):(r.qty||0)*(r.rate||0);return <div key={r.id} style={ROW}>
+          <div style={cNo}>C.{i+1}</div>
+          <input value={r.desc} placeholder="Deskripsi item" onChange={e=>upC(r.id,"desc",e.target.value)} style={inp("left")}/>
+          <input value={r.unit} onChange={e=>upC(r.id,"unit",e.target.value)} style={inp("center")}/>
+          {m==="calc"?<NumInput value={r.qty} onChange={v=>upC(r.id,"qty",v)} thousands style={inp("right")}/>:<div style={muted}>—</div>}
+          {m==="calc"?<NumInput value={r.rate} onChange={v=>upC(r.id,"rate",v)} thousands style={inp("right")}/>:<div style={muted}>nominal</div>}
+          {m==="calc"?<div style={cAmt}>{rp(amt)}</div>:<NumInput value={r.amt} onChange={v=>upC(r.id,"amt",v)} thousands style={inp("right")}/>}
+          <div style={cPct}>{(pof(amt)*100).toFixed(2)}%</div>
+          <button onClick={()=>delC(r.id)} style={delBtn}><Trash2 size={13}/></button></div>;})}
+        <div style={{padding:"2px 0 6px 48px",display:"flex",gap:8}}><button onClick={()=>addC("calc")} style={{...addBtn,margin:0}}><Plus size={13}/>qty × rate</button><button onClick={()=>addC("amt")} style={{...addBtn,margin:0}}><Plus size={13}/>amount langsung</button></div>
+        {subRow("SUB-TOTAL C",C,COL.amber)}</>}
 
-        <div style={band("#E11D48")}>{bL("D")}{bT("UNCOVERABLE CONSTRUCTION RISK")}{bAmt(D)}</div>
-        {secD.map((r,i)=>{const amt=(r.pct||0)*SALES;return <div key={r.id} style={ROW}>
+        {secBand("D","UNCOVERABLE CONSTRUCTION RISK",D,"#E11D48","D")}
+        {open.D&&<>{secD.map((r,i)=>{const amt=(r.pct||0)*SALES;return <div key={r.id} style={ROW}>
           <div style={cNo}>D.{i+1}</div>
           <input value={r.desc} placeholder="Nama risiko" onChange={e=>upD(r.id,"desc",e.target.value)} style={inp("left")}/>
           <div style={{textAlign:"center",fontFamily:FM,fontSize:11,color:COL.sub}}>%</div>
@@ -1195,10 +1274,10 @@ tr.sales td{background:#141821;color:#fff;font-weight:800;font-size:11px;}
           <div style={muted}>× Sales</div><div style={cAmt}>{rp(amt)}</div><div style={cPct}>{(pof(amt)*100).toFixed(2)}%</div>
           <button onClick={()=>delD(r.id)} style={delBtn}><Trash2 size={13}/></button></div>;})}
         <div style={{padding:"0 0 6px"}}><button onClick={addD} style={addBtn}><Plus size={13}/>tambah item risiko</button></div>
-        {subRow("SUB-TOTAL D",D,"#E11D48")}
+        {subRow("SUB-TOTAL D",D,"#E11D48")}</>}
 
-        <div style={band("#7C3AED")}>{bL("E")}{bT("OTHER EXPENSE")}{bAmt(E)}</div>
-        {secE.map((r,i)=>{const amt=r.mode==="pct"?(r.pct||0)*SALES:(r.amt||0);return <div key={r.id} style={ROW}>
+        {secBand("E","OTHER EXPENSE",E,"#7C3AED","E")}
+        {open.E&&<>{secE.map((r,i)=>{const amt=r.mode==="pct"?(r.pct||0)*SALES:(r.amt||0);return <div key={r.id} style={ROW}>
           <div style={cNo}>E.{i+1}</div>
           <input value={r.desc} placeholder="Nama biaya" onChange={e=>upE(r.id,"desc",e.target.value)} style={inp("left")}/>
           <button onClick={()=>upE(r.id,"mode",r.mode==="pct"?"amt":"pct")} title="ganti basis % / Rp" style={{border:"1px solid "+COL.line,background:r.mode==="pct"?"#EEF0FE":"#ECFDF5",color:r.mode==="pct"?COL.steel:COL.green,borderRadius:7,padding:"5px 0",fontFamily:FM,fontSize:11,fontWeight:600,cursor:"pointer"}}>{r.mode==="pct"?"%":"Rp"}</button>
@@ -1207,8 +1286,8 @@ tr.sales td{background:#141821;color:#fff;font-weight:800;font-size:11px;}
           {r.mode==="pct"?<div style={cAmt}>{rp(amt)}</div>:<NumInput value={r.amt} onChange={v=>upE(r.id,"amt",v)} thousands style={inp("right")}/>}
           <div style={cPct}>{(pof(amt)*100).toFixed(2)}%</div>
           <button onClick={()=>delE(r.id)} style={delBtn}><Trash2 size={13}/></button></div>;})}
-        <div style={{padding:"0 0 6px"}}><button onClick={addE} style={addBtn}><Plus size={13}/>tambah item E</button></div>
-        {subRow("SUB-TOTAL E",E,"#7C3AED")}
+        <div style={{padding:"2px 0 6px 48px",display:"flex",gap:8}}><button onClick={()=>addE("pct")} style={{...addBtn,margin:0}}><Plus size={13}/>% Sales</button><button onClick={()=>addE("amt")} style={{...addBtn,margin:0}}><Plus size={13}/>amount langsung</button></div>
+        {subRow("SUB-TOTAL E",E,"#7C3AED")}</>}
 
         <div style={{display:"grid",gridTemplateColumns:PGRID,gap:6,alignItems:"center",padding:"12px 14px",background:"#EEF0FE",borderTop:"2px solid "+COL.steel}}>
           <div/><div style={{fontFamily:FD,fontWeight:800,fontSize:13,color:COL.ink}}>SUB-TOTAL A + B + C + D + E</div><div/><div/><div/>
