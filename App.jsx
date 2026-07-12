@@ -51,6 +51,22 @@ const dlB64Xlsx=(b64,name)=>{const bin=atob(b64);const n=bin.length;const bytes=
   const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download=name;
   document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),1500);};
 const AUTO_BASE=900000;   // kode ≥ ini = item hasil Auto AHS (quick estimate)
+// ---- gaya bersama untuk semua export Excel (BOQ / AHS / SBDY / RAB) ----
+const XDARK="11151C",XIND="EEF0FE",XAMB="FCEFD9";
+const XB={style:"thin",color:{rgb:"C9CCD4"}};const XBD={top:XB,bottom:XB,left:XB,right:XB};
+const xHead=(bg)=>({fill:{fgColor:{rgb:bg||XDARK}},font:{bold:true,color:{rgb:"FFFFFF"},sz:11},alignment:{horizontal:"center",vertical:"center"},border:XBD});
+const xCell=(al)=>({alignment:{horizontal:al||"left",vertical:"center"},border:XBD});
+const xNum=(bold)=>({numFmt:"#,##0.00",alignment:{horizontal:"right"},font:{bold:!!bold},border:XBD});
+const xQty=()=>({numFmt:"#,##0.0000",alignment:{horizontal:"right"},border:XBD});
+const xGrp=()=>({fill:{fgColor:{rgb:XIND}},font:{bold:true},border:XBD});
+const xGrpN=()=>({fill:{fgColor:{rgb:XIND}},font:{bold:true},numFmt:"#,##0.00",alignment:{horizontal:"right"},border:XBD});
+const xGrpQ=()=>({fill:{fgColor:{rgb:XIND}},font:{bold:true},numFmt:"#,##0.0000",alignment:{horizontal:"right"},border:XBD});
+const xTot=(fmt)=>({fill:{fgColor:{rgb:XAMB}},font:{bold:true},numFmt:fmt||"#,##0.00",alignment:{horizontal:"right"},border:XBD});
+const xTotL=()=>({fill:{fgColor:{rgb:XAMB}},font:{bold:true},border:XBD});
+const xHelp={font:{color:{rgb:"9AA3B2"},sz:9},border:XBD};
+const xPut=(ws,a,v)=>{ws[a]=v;};
+const xRef=(ws,nr,nc)=>{ws["!ref"]=XLSXS.utils.encode_range({s:{r:0,c:0},e:{r:nr-1,c:nc-1}});};
+const CATCOLX={m:"K",l:"L",q:"M",s:"N"};   // kolom breakdown di sheet AHS
 const BOQ_TEMPLATE_B64="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";
 const AHS_TEMPLATE_B64="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";
 const PREF={A:"m",C:"l",D:"q",E:"s"};const TAG={LM:"m",LB:"l",EQ:"q",SC:"s"};
@@ -266,7 +282,7 @@ function Studio({discipline,hidden,onReport,register}){
   function readSbdy(file){const fr=new FileReader();fr.onload=e=>{try{
     const isCsv=/\.csv$/i.test(file.name);const wb=XLSX.read(e.target.result,{type:isCsv?"binary":"array"});
     const A=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{header:1,defval:null});
-    const need={kode:["kode","code"],nama:["nama","name","uraian"],unit:["unit","satuan"],kat:["kategori","kat","category","jenis"],harga:["harga","price","rate"],ket:["keterangan","sumber","ref","penawaran"]};
+    const need={kode:["kode","code"],nama:["sumber daya","nama","name","uraian"],unit:["unit","satuan"],kat:["kategori","kat","category","jenis"],harga:["harga","price","rate"],ket:["keterangan","catatan","penawaran"]};
     const h=findHdr(A,need);if(!h){alert("Header tidak ketemu. Kolom wajib: Kode, Nama, Unit, Kategori, Harga (opsional: Keterangan).");return;}
     const {idx}=h;const nm={},np={},nr={};let n=0;
     for(let i=h.row+1;i<A.length;i++){const r=A[i]||[];const rc=r[idx.kode]==null?"":String(r[idx.kode]).trim();if(!rc)continue;
@@ -311,29 +327,18 @@ function Studio({discipline,hidden,onReport,register}){
     if(kind==="sbdy"){d=[["Kode","Nama","Unit","Kategori","Harga","Keterangan"],["A0001","Semen PCC 50kg","zak","Material",62500,"Penawaran PT X 2025"],["C0001","Pekerja","OH","Labor",120000,""],["D0001","Sewa Excavator","jam","Equipment",450000,""]];name="template_SBDY.xlsx";}
     else{d=[["Kode AHS","Nama AHS","Unit","Kelompok","Kode SD","Koef"],[99001,"Pondasi Beton Contoh","m3","Beton","A0001",7.2],[99001,"","","Beton","C0001",1.65],[99001,"","","Besi","A0002",120],[99001,"","","Bekisting","A0003",4]];name="template_AHS_Master.xlsx";}
     const ws=XLSX.utils.aoa_to_sheet(d);const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,kind==="sbdy"?"SBDY":"AHS");XLSX.writeFile(wb,name);}
-  // ---- export SBDY (semua sumber daya + harga saat ini) untuk diisi di Excel lalu di-upload lagi ----
-  function exportSbdy(){
-    const codes=Object.keys(meta).sort((a,b)=>a<b?-1:1);
-    const d=[["Kode","Nama","Unit","Kategori","Harga","Keterangan"]];
-    codes.forEach(rc=>{const m=meta[rc]||{};d.push([rc,m.n||"",m.u||"",CATLBL[m.cat]||m.cat||"",prices[rc]!=null?prices[rc]:0,refs[rc]||""]);});
-    const ws=XLSX.utils.aoa_to_sheet(d);ws["!cols"]=[{wch:12},{wch:46},{wch:8},{wch:12},{wch:14},{wch:28}];
-    const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,"SBDY");XLSX.writeFile(wb,"SBDY_harga.xlsx");}
+  // ---- Export SBDY: format identik sheet SBDY di Export RAB ----
+  function exportSbdy(){const wb=XLSXS.utils.book_new();XLSXS.utils.book_append_sheet(wb,mkSBDY(false).ws,"SBDY");
+    XLSXS.writeFile(wb,"SBDY_"+discipline+".xlsx");}
   // ---- Export AHS (kerangka per item BOQ) & Import AHS (breakdown SBDY diisi manual di Excel) ----
   const KLAS_LBL={m:"material",l:"upah",q:"alat",s:"subkon"};
   const KLAS_MAP={material:["m","A"],bahan:["m","A"],mat:["m","A"],upah:["l","C"],labor:["l","C"],tenaga:["l","C"],alat:["q","D"],equipment:["q","D"],sewa:["q","D"],subkon:["s","E"],subcont:["s","E"],"sub-cont":["s","E"],sub:["s","E"],borongan:["s","E"]};
-  function exportAHS(){
-    let codes=[...new Set(itemRows.filter(r=>r.code!=null).map(r=>r.code))].filter(c=>catByCode[c]);
-    if(!codes.length)codes=Object.keys(ahs).map(Number).filter(c=>catByCode[c]);
-    codes.sort((a,b)=>a-b);
-    const d=[["kode ahs","klasifikasi SD","item ahs","satuan","koef SD","unit rate SD","keterangan"]];
-    codes.forEach(c=>{const cb=catByCode[c]||{};d.push([c,"",cb.n||names[c]||"",cb.u||"","","",""]);
-      (ahs[c]||[]).forEach(cp=>{const m=meta[cp.rc]||{};d.push(["",KLAS_LBL[m.cat]||"",m.n||"",m.u||"",cp.q!=null?cp.q:"",prices[cp.rc]!=null?prices[cp.rc]:0,refs[cp.rc]||""]);});});
-    const ws=XLSX.utils.aoa_to_sheet(d);ws["!cols"]=[{wch:10},{wch:14},{wch:52},{wch:10},{wch:10},{wch:15},{wch:30}];
-    const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,"AHS");XLSX.writeFile(wb,"AHS_breakdown_"+discipline+".xlsx");}
+  function exportAHS(){const wb=XLSXS.utils.book_new();XLSXS.utils.book_append_sheet(wb,mkAHS(false).ws,"AHS");
+    XLSXS.writeFile(wb,"AHS_"+discipline+".xlsx");}
   function importAHS(file){const fr=new FileReader();fr.onload=e=>{try{
     const isCsv=/\.csv$/i.test(file.name);const wb=XLSX.read(e.target.result,{type:isCsv?"binary":"array"});
     const A=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{header:1,defval:null});
-    const need={kode:["kode ahs","kode_ahs","kodeahs","kode analisa","kode"],klas:["klasifikasi sd","klasifikasi","klas","kelompok","jenis"],item:["item ahs","item","sumber daya","nama","uraian"],unit:["satuan","unit"],koef:["koef sd","koef","koefisien","coef"],harga:["unit rate sd","unit rate","harga satuan","harga"],ket:["keterangan","sumber","ref","catatan"]};
+    const need={kode:["kode ahs","kode_ahs","kodeahs","kode analisa"],ksd:["kode sd","kode sumber","kode_sd"],klas:["klasifikasi sd","klasifikasi","klas","kelompok","jenis"],item:["item ahs","item","sumber daya","nama","uraian"],unit:["satuan","unit"],koef:["koef sd","koef","koefisien","coef"],harga:["unit rate sd","unit rate","harga satuan","harga"],ket:["keterangan","sumber","ref","catatan"]};
     const h=findHdr(A,need);if(!h){alert("Header tidak ketemu. Kolom: kode ahs, klasifikasi SD, item ahs, satuan, koef SD, unit rate SD, keterangan.");return;}
     const {idx}=h;const nAhs={},nNames={},catUp={},nMeta={},nPrices={},nRefs={};let cur=null,ci=0,nA=0,nS=0,nP=0;
     const usedAuto=new Set([...Object.keys(names),...catalog.map(c=>String(c.c))].map(x=>Number(x)).filter(x=>x>=AUTO_BASE));let seq=AUTO_BASE;
@@ -347,7 +352,10 @@ function Studio({discipline,hidden,onReport,register}){
         cur=code;ci=0;nAhs[code]=[];nA++;nNames[code]=item||("AHS "+code);catUp[code]={n:nNames[code],u:unit||"Ls"};continue;}
       const klas=idx.klas>=0&&r[idx.klas]!=null?String(r[idx.klas]).trim().toLowerCase():"";
       const kv=KLAS_MAP[klas];const hasKoef=koefRaw!=null&&String(koefRaw).trim()!=="";
-      if(cur!=null&&kv&&hasKoef){ci++;const[cat,pfx]=kv;const rc=pfx+cur+"-"+String(ci).padStart(2,"0");
+      const ksd=idx.ksd>=0&&r[idx.ksd]!=null?String(r[idx.ksd]).trim():"";
+      if(cur!=null&&(kv||ksd)&&hasKoef){ci++;
+        const kv2=kv||KLAS_MAP[(PREF[ksd[0]]==="m"?"material":PREF[ksd[0]]==="l"?"upah":PREF[ksd[0]]==="q"?"alat":"subkon")];
+        const[cat,pfx]=kv2;const rc=ksd||(pfx+cur+"-"+String(ci).padStart(2,"0"));
         nMeta[rc]={n:item,u:unit,cat};
         const hRaw=idx.harga>=0?r[idx.harga]:null;const hasH=hRaw!=null&&String(hRaw).trim()!=="";
         if(hasH){nPrices[rc]=parseNum(hRaw,true);nP++;}else if(prices[rc]==null)nPrices[rc]=0;
@@ -388,116 +396,168 @@ function Studio({discipline,hidden,onReport,register}){
     (ahs[r.code]||[]).forEach((c,i)=>{m[c.rc]=(m[c.rc]||0)+v*effQ(r.code,i,c.q||0);});
     (addc[r.code]||[]).forEach(c=>{m[c.rc]=(m[c.rc]||0)+v*(c.q||0);});});return m;},[itemRows,ahs,addc,ovr]);
 
-  // ---- EXPORT RAB: 1 workbook, 3 sheet (BOQ -> AHS -> SBDY) terhubung VLOOKUP ----
-  function exportRAB(){
-    const DARK="11151C",IND="EEF0FE",TEAL="E1F2F0",AMB="FCEFD9";
-    const B={style:"thin",color:{rgb:"C9CCD4"}};const bd={top:B,bottom:B,left:B,right:B};
-    const sHead=bg=>({fill:{fgColor:{rgb:bg}},font:{bold:true,color:{rgb:"FFFFFF"},sz:11},alignment:{horizontal:"center",vertical:"center"},border:bd});
-    const sCell=(al="left")=>({alignment:{horizontal:al,vertical:"center"},border:bd});
-    const sNum=(bold=false)=>({numFmt:"#,##0.00",alignment:{horizontal:"right"},font:{bold},border:bd});
-    const sGrp=()=>({fill:{fgColor:{rgb:IND}},font:{bold:true},border:bd});
-    const sGrpN=()=>({fill:{fgColor:{rgb:IND}},font:{bold:true},numFmt:"#,##0.00",alignment:{horizontal:"right"},border:bd});
-    const put=(ws,addr,v)=>{ws[addr]=v;};
-    const range=(ws,nr,nc)=>{ws["!ref"]=XLSXS.utils.encode_range({s:{r:0,c:0},e:{r:nr-1,c:nc-1}});};
+  // ================= EXPORT EXCEL (format tunggal, dipakai BOQ/AHS/SBDY/RAB) =================
+  // volume total tiap sumber daya (koef x volume BOQ) -> dipakai sheet SBDY
+  const sbVol=()=>{const v={};itemRows.forEach(r=>{if(r.code==null)return;const vol=parseFloat(r.vol);if(isNaN(vol))return;
+    (ahs[r.code]||[]).concat(addc[r.code]||[]).forEach((cp,i)=>{const q=effQ(r.code,i,cp.q||0);v[cp.rc]=(v[cp.rc]||0)+q*vol;});});return v;};
+  const ahsVol=()=>{const v={};itemRows.forEach(r=>{if(r.code==null)return;const vol=parseFloat(r.vol);if(!isNaN(vol))v[r.code]=(v[r.code]||0)+vol;});return v;};
+  const ahsCodes=()=>{let c=[...new Set(itemRows.filter(r=>r.code!=null).map(r=>r.code))];
+    if(!c.length)c=Object.keys(ahs).map(Number);return c.filter(x=>ahs[x]||catByCode[x]).sort((a,b)=>a-b);};
 
-    // ---------- SHEET SBDY ----------
-    const sbCodes=Object.keys(meta).sort();
-    const sbHead=["KODE SD","SUMBER DAYA","UNIT","KATEGORI","VOLUME","HARGA","SUBTOTAL","KETERANGAN"];
-    const wsS={};sbHead.forEach((h,c)=>put(wsS,XLSXS.utils.encode_cell({r:0,c}),{t:"s",v:h,s:sHead(DARK)}));
-    sbCodes.forEach((rc,i)=>{const R=i+2,m=meta[rc]||{};
-      put(wsS,"A"+R,{t:"s",v:rc,s:sCell()});
-      put(wsS,"B"+R,{t:"s",v:m.n||"",s:sCell()});
-      put(wsS,"C"+R,{t:"s",v:m.u||"",s:sCell("center")});
-      put(wsS,"D"+R,{t:"s",v:CATLBL[m.cat]||"",s:sCell("center")});
-      put(wsS,"E"+R,{t:"n",f:`SUMIF(AHS!$B:$B,A${R},AHS!$G:$G)`,s:{numFmt:"#,##0.0000",alignment:{horizontal:"right"},border:bd}});
-      put(wsS,"F"+R,{t:"n",v:prices[rc]!=null?prices[rc]:0,s:sNum()});
-      put(wsS,"G"+R,{t:"n",f:`E${R}*F${R}`,s:sNum()});
-      put(wsS,"H"+R,{t:"s",v:refs[rc]||"",s:sCell()});});
-    const sTR=sbCodes.length+2;
-    ["A","B","C","D","E","F","H"].forEach(c=>put(wsS,c+sTR,{t:"s",v:c==="B"?"TOTAL SBDY":"",s:{fill:{fgColor:{rgb:AMB}},font:{bold:true},border:bd}}));
-    put(wsS,"G"+sTR,sbCodes.length?{t:"n",f:`SUM(G2:G${sbCodes.length+1})`,s:{fill:{fgColor:{rgb:AMB}},font:{bold:true},numFmt:"#,##0.00",alignment:{horizontal:"right"},border:bd}}:{t:"n",v:0,s:sNum(true)});
-    range(wsS,sTR,8);
-    wsS["!cols"]=[{wch:14},{wch:42},{wch:9},{wch:12},{wch:13},{wch:15},{wch:17},{wch:26}];
-
-    // ---------- SHEET AHS ----------
-    let codes=[...new Set(itemRows.filter(r=>r.code!=null).map(r=>r.code))];
-    if(!codes.length)codes=Object.keys(ahs).map(Number);
-    codes=codes.filter(c=>ahs[c]||catByCode[c]).sort((a,b)=>a-b);
-    const aHead=["KODE AHS","KODE SD","KLASIFIKASI SD","ITEM AHS","SATUAN","KOEF SD","VOLUME","UNIT RATE SD","SUBTOTAL"];
-    const wsA={};aHead.forEach((h,c)=>put(wsA,XLSXS.utils.encode_cell({r:0,c}),{t:"s",v:h,s:sHead(DARK)}));
-    let r=1;const hdrRows=[];
+  // ---------- SHEET SBDY ----------
+  function mkSBDY(linked){
+    const codes=Object.keys(meta).sort();const vols=sbVol();const ws={};
+    ["KODE SD","SUMBER DAYA","UNIT","KATEGORI","VOLUME","HARGA","SUBTOTAL","KETERANGAN"].forEach((h,c)=>xPut(ws,XLSXS.utils.encode_cell({r:0,c}),{t:"s",v:h,s:xHead()}));
+    codes.forEach((rc,i)=>{const R=i+2,m=meta[rc]||{};
+      xPut(ws,"A"+R,{t:"s",v:rc,s:xCell()});
+      xPut(ws,"B"+R,{t:"s",v:m.n||"",s:xCell()});
+      xPut(ws,"C"+R,{t:"s",v:m.u||"",s:xCell("center")});
+      xPut(ws,"D"+R,{t:"s",v:CATLBL[m.cat]||"",s:xCell("center")});
+      xPut(ws,"E"+R,linked?{t:"n",f:`SUMIF(AHS!$B:$B,A${R},AHS!$G:$G)`,s:xQty()}:{t:"n",v:vols[rc]||0,s:xQty()});
+      xPut(ws,"F"+R,{t:"n",v:prices[rc]!=null?prices[rc]:0,s:xNum()});
+      xPut(ws,"G"+R,{t:"n",f:`E${R}*F${R}`,s:xNum()});
+      xPut(ws,"H"+R,{t:"s",v:refs[rc]||"",s:xCell()});});
+    const TR=codes.length+2;
+    ["A","B","C","D","E","F","H"].forEach(c=>xPut(ws,c+TR,{t:"s",v:c==="B"?"TOTAL SBDY":"",s:xTotL()}));
+    xPut(ws,"G"+TR,codes.length?{t:"n",f:`SUM(G2:G${codes.length+1})`,s:xTot()}:{t:"n",v:0,s:xTot()});
+    xRef(ws,TR,8);ws["!cols"]=[{wch:14},{wch:42},{wch:9},{wch:12},{wch:13},{wch:15},{wch:17},{wch:26}];
+    return {ws,TR,n:codes.length};
+  }
+  // ---------- SHEET AHS (kolom K-N = breakdown MATERIAL/UPAH/ALAT/SUBKON) ----------
+  function mkAHS(linked){
+    const codes=ahsCodes();const av=ahsVol();const ws={};const hdrRows=[];
+    ["KODE AHS","KODE SD","KLASIFIKASI SD","ITEM AHS","SATUAN","KOEF SD","VOLUME","UNIT RATE SD","SUBTOTAL"].forEach((h,c)=>xPut(ws,XLSXS.utils.encode_cell({r:0,c}),{t:"s",v:h,s:xHead()}));
+    [["K","MATERIAL"],["L","UPAH"],["M","ALAT"],["N","SUBKON"]].forEach(([c,h])=>xPut(ws,c+"1",{t:"s",v:h,s:xHead()}));
+    let r=1;
     codes.forEach(code=>{
-      const comps=(ahs[code]||[]).concat(addc[code]||[]);
-      const HR=r+1;hdrRows.push(HR);const cb=catByCode[code]||{};
-      put(wsA,"A"+HR,{t:"n",v:code,s:sGrp()});
-      put(wsA,"B"+HR,{t:"s",v:"",s:sGrp()});
-      put(wsA,"C"+HR,{t:"s",v:"",s:sGrp()});
-      put(wsA,"D"+HR,{t:"s",v:cb.n||names[code]||"",s:sGrp()});
-      put(wsA,"E"+HR,{t:"s",v:cb.u||"",s:{fill:{fgColor:{rgb:IND}},font:{bold:true},alignment:{horizontal:"center"},border:bd}});
-      put(wsA,"F"+HR,{t:"s",v:"",s:sGrp()});
-      put(wsA,"G"+HR,{t:"n",f:`IFERROR(VLOOKUP(A${HR},BOQ!$A:$F,4,FALSE),0)`,s:{fill:{fgColor:{rgb:IND}},font:{bold:true},numFmt:"#,##0.0000",alignment:{horizontal:"right"},border:bd}});
-      put(wsA,"H"+HR,{t:"n",f:`IFERROR(I${HR}/G${HR},0)`,s:sGrpN()});
-      r++;const first=r+1;
+      const comps=(ahs[code]||[]).concat(addc[code]||[]);const cb=catByCode[code]||{};const HR=r+1;hdrRows.push(HR);
+      xPut(ws,"A"+HR,{t:"n",v:code,s:xGrp()});
+      ["B","C","F"].forEach(c=>xPut(ws,c+HR,{t:"s",v:"",s:xGrp()}));
+      xPut(ws,"D"+HR,{t:"s",v:cb.n||names[code]||"",s:xGrp()});
+      xPut(ws,"E"+HR,{t:"s",v:cb.u||"",s:{...xGrp(),alignment:{horizontal:"center"}}});
+      xPut(ws,"G"+HR,linked?{t:"n",f:`IFERROR(VLOOKUP(A${HR},BOQ!$A:$J,4,FALSE),0)`,s:xGrpQ()}:{t:"n",v:av[code]||0,s:xGrpQ()});
+      xPut(ws,"H"+HR,{t:"n",f:`IFERROR(I${HR}/G${HR},0)`,s:xGrpN()});
+      r++;const first=r+1;const catRows={m:[],l:[],q:[],s:[]};
       comps.forEach((cp,i)=>{const q=effQ(code,i,cp.q||0);const m=meta[cp.rc]||{};const R=r+1;
-        put(wsA,"A"+R,{t:"s",v:"",s:sCell()});
-        put(wsA,"B"+R,{t:"s",v:cp.rc,s:sCell()});
-        put(wsA,"C"+R,{t:"s",v:KLAS_LBL[m.cat]||"",s:sCell()});
-        put(wsA,"D"+R,{t:"s",f:`IFERROR(VLOOKUP(B${R},SBDY!$A:$H,2,FALSE),"")`,s:sCell()});
-        put(wsA,"E"+R,{t:"s",f:`IFERROR(VLOOKUP(B${R},SBDY!$A:$H,3,FALSE),"")`,s:sCell("center")});
-        put(wsA,"F"+R,{t:"n",v:q,s:{numFmt:"#,##0.0000",alignment:{horizontal:"right"},border:bd}});
-        put(wsA,"G"+R,{t:"n",f:`F${R}*$G$${HR}`,s:{numFmt:"#,##0.0000",alignment:{horizontal:"right"},border:bd}});
-        put(wsA,"H"+R,{t:"n",f:`IFERROR(VLOOKUP(B${R},SBDY!$A:$H,6,FALSE),0)`,s:sNum()});
-        put(wsA,"I"+R,{t:"n",f:`H${R}*G${R}`,s:sNum()});
+        xPut(ws,"A"+R,{t:"s",v:"",s:xCell()});
+        xPut(ws,"B"+R,{t:"s",v:cp.rc,s:xCell()});
+        xPut(ws,"C"+R,linked?{t:"s",f:`IFERROR(VLOOKUP(B${R},SBDY!$A:$H,4,FALSE),"")`,s:xCell()}:{t:"s",v:CATLBL[m.cat]||"",s:xCell()});
+        xPut(ws,"D"+R,linked?{t:"s",f:`IFERROR(VLOOKUP(B${R},SBDY!$A:$H,2,FALSE),"")`,s:xCell()}:{t:"s",v:m.n||"",s:xCell()});
+        xPut(ws,"E"+R,linked?{t:"s",f:`IFERROR(VLOOKUP(B${R},SBDY!$A:$H,3,FALSE),"")`,s:xCell("center")}:{t:"s",v:m.u||"",s:xCell("center")});
+        xPut(ws,"F"+R,{t:"n",v:q,s:xQty()});
+        xPut(ws,"G"+R,{t:"n",f:`F${R}*$G$${HR}`,s:xQty()});
+        xPut(ws,"H"+R,linked?{t:"n",f:`IFERROR(VLOOKUP(B${R},SBDY!$A:$H,6,FALSE),0)`,s:xNum()}:{t:"n",v:prices[cp.rc]!=null?prices[cp.rc]:0,s:xNum()});
+        xPut(ws,"I"+R,{t:"n",f:`H${R}*G${R}`,s:xNum()});
+        const col=CATCOLX[m.cat]||"K";xPut(ws,col+R,{t:"n",f:`I${R}`,s:xNum()});
+        (catRows[m.cat]||catRows.m).push(R);
         r++;});
       const last=r;
-      put(wsA,"I"+HR,comps.length?{t:"n",f:`SUM(I${first}:I${last})`,s:sGrpN()}:{t:"n",v:0,s:sGrpN()});
+      xPut(ws,"I"+HR,comps.length?{t:"n",f:`SUM(I${first}:I${last})`,s:xGrpN()}:{t:"n",v:0,s:xGrpN()});
+      ["m","l","q","s"].forEach(k=>{const col=CATCOLX[k];const rows=catRows[k];
+        xPut(ws,col+HR,rows.length?{t:"n",f:rows.map(x=>col+x).join("+"),s:xGrpN()}:{t:"n",v:0,s:xGrpN()});});
     });
-    const aTR=r+1;
-    ["A","B","C","D","E","F","G","H"].forEach(c=>put(wsA,c+aTR,{t:"s",v:c==="D"?"TOTAL AHS":"",s:{fill:{fgColor:{rgb:AMB}},font:{bold:true},border:bd}}));
-    put(wsA,"I"+aTR,hdrRows.length?{t:"n",f:hdrRows.map(h=>"I"+h).join("+"),s:{fill:{fgColor:{rgb:AMB}},font:{bold:true},numFmt:"#,##0.00",alignment:{horizontal:"right"},border:bd}}:{t:"n",v:0,s:sNum(true)});
-    range(wsA,aTR,9);
-    wsA["!cols"]=[{wch:11},{wch:14},{wch:14},{wch:44},{wch:9},{wch:10},{wch:13},{wch:15},{wch:17}];
-
-    // ---------- SHEET BOQ ----------
-    const bHead=["KODE","ITEM PEKERJAAN","UNIT","VOLUME","UNIT RATE","AMOUNT"];
-    const wsB={};bHead.forEach((h,c)=>put(wsB,XLSXS.utils.encode_cell({r:0,c}),{t:"s",v:h,s:sHead(DARK)}));
-    const items=priced.filter(x=>String(x.item).trim()!=="");
-    items.forEach((x,i)=>{const R=i+2;
-      put(wsB,"A"+R,x.code!=null?{t:"n",v:x.code,s:sCell("center")}:{t:"s",v:"",s:sCell("center")});
-      put(wsB,"B"+R,{t:"s",v:x.item,s:sCell()});
-      put(wsB,"C"+R,{t:"s",v:x.unit||"",s:sCell("center")});
-      put(wsB,"D"+R,{t:"n",v:parseFloat(x.vol)||0,s:{numFmt:"#,##0.00",alignment:{horizontal:"right"},border:bd}});
-      put(wsB,"E"+R,{t:"n",f:`IFERROR(VLOOKUP(A${R},AHS!$A:$I,8,FALSE),0)`,s:sNum()});
-      put(wsB,"F"+R,{t:"n",f:`D${R}*E${R}`,s:sNum()});});
+    const TR=r+1;
+    ["A","B","C","D","E","F","G","H"].forEach(c=>xPut(ws,c+TR,{t:"s",v:c==="D"?"TOTAL AHS":"",s:xTotL()}));
+    xPut(ws,"I"+TR,hdrRows.length?{t:"n",f:hdrRows.map(h=>"I"+h).join("+"),s:xTot()}:{t:"n",v:0,s:xTot()});
+    ["K","L","M","N"].forEach(col=>xPut(ws,col+TR,hdrRows.length?{t:"n",f:hdrRows.map(h=>col+h).join("+"),s:xTot()}:{t:"n",v:0,s:xTot()}));
+    xRef(ws,TR,14);
+    ws["!cols"]=[{wch:11},{wch:14},{wch:14},{wch:44},{wch:9},{wch:10},{wch:13},{wch:15},{wch:17},{wch:2},{wch:15},{wch:15},{wch:15},{wch:15}];
+    return {ws,TR,hdrRows};
+  }
+  // ---------- SHEET BOQ (unit rate dipecah MATERIAL/UPAH/ALAT/SUBKON) ----------
+  function mkBOQ(linked){
+    const ws={};const items=priced.filter(x=>String(x.item).trim()!=="");
+    ["KODE","ITEM PEKERJAAN","UNIT","VOLUME","MATERIAL","UPAH","ALAT","SUBKON","UNIT RATE","AMOUNT"].forEach((h,c)=>xPut(ws,XLSXS.utils.encode_cell({r:0,c}),{t:"s",v:h,s:xHead()}));
+    items.forEach((x,i)=>{const R=i+2,rt=x.rt;
+      xPut(ws,"A"+R,x.code!=null?{t:"n",v:x.code,s:xCell("center")}:{t:"s",v:"",s:xCell("center")});
+      xPut(ws,"B"+R,{t:"s",v:x.item,s:xCell()});
+      xPut(ws,"C"+R,{t:"s",v:x.unit||"",s:xCell("center")});
+      xPut(ws,"D"+R,{t:"n",v:parseFloat(x.vol)||0,s:xNum()});
+      [["E",11,"m"],["F",12,"l"],["G",13,"q"],["H",14,"s"]].forEach(([col,idx,k])=>{
+        xPut(ws,col+R,linked?{t:"n",f:`IFERROR(VLOOKUP($A${R},AHS!$A:$N,${idx},FALSE)/$D${R},0)`,s:xNum()}:{t:"n",v:rt?(rt[k]||0):0,s:xNum()});});
+      xPut(ws,"I"+R,{t:"n",f:`SUM(E${R}:H${R})`,s:xNum()});
+      xPut(ws,"J"+R,{t:"n",f:`D${R}*I${R}`,s:xNum()});});
     const TR=items.length+2;
-    [["A",""],["B","TOTAL BOQ"],["C",""],["D",""],["E",""]].forEach(([c,v])=>put(wsB,c+TR,{t:"s",v,s:{fill:{fgColor:{rgb:AMB}},font:{bold:true},border:bd}}));
-    put(wsB,"F"+TR,items.length?{t:"n",f:`SUM(F2:F${items.length+1})`,s:{fill:{fgColor:{rgb:AMB}},font:{bold:true},numFmt:"#,##0.00",alignment:{horizontal:"right"},border:bd}}:{t:"n",v:0,s:sNum(true)});
-    range(wsB,TR,6);
-    wsB["!cols"]=[{wch:10},{wch:52},{wch:9},{wch:12},{wch:16},{wch:18}];
+    ["A","B","C","D","I"].forEach(c=>xPut(ws,c+TR,{t:"s",v:c==="B"?"TOTAL BOQ":"",s:xTotL()}));
+    ["E","F","G","H"].forEach(c=>xPut(ws,c+TR,{t:"s",v:"",s:xTotL()}));
+    xPut(ws,"J"+TR,items.length?{t:"n",f:`SUM(J2:J${items.length+1})`,s:xTot()}:{t:"n",v:0,s:xTot()});
+    xRef(ws,TR,10);
+    ws["!cols"]=[{wch:10},{wch:46},{wch:9},{wch:12},{wch:14},{wch:14},{wch:14},{wch:14},{wch:15},{wch:18}];
+    return {ws,TR,n:items.length};
+  }
+  // ---------- SHEET TOP AHS / TOP SBDY ----------
+  function mkTOP(A,S){
+    const nTop=10;const wsTA={};const hdrRows=A.hdrRows;
+    ["RANK","KODE AHS","ITEM AHS","SATUAN","VOLUME","UNIT RATE","AMOUNT","% TOTAL","KUM %"].forEach((h,c)=>xPut(wsTA,XLSXS.utils.encode_cell({r:0,c}),{t:"s",v:h,s:xHead()}));
+    xPut(wsTA,"L1",{t:"s",v:"— data link (AHS) —",s:xHelp});xPut(wsTA,"M1",{t:"s",v:"amount",s:xHelp});xPut(wsTA,"N1",{t:"s",v:"rank",s:xHelp});
+    const hEnd=hdrRows.length+1;
+    hdrRows.forEach((HR,i)=>{const R=i+2;
+      xPut(wsTA,"L"+R,{t:"n",f:`AHS!A${HR}`,s:xHelp});
+      xPut(wsTA,"M"+R,{t:"n",f:`AHS!I${HR}`,s:xHelp});
+      xPut(wsTA,"N"+R,{t:"n",f:`RANK(M${R},$M$2:$M$${hEnd},0)+COUNTIF($M$2:M${R},M${R})-1`,s:xHelp});});
+    const nA=Math.min(nTop,hdrRows.length);
+    for(let k=1;k<=nA;k++){const R=k+1;
+      xPut(wsTA,"A"+R,{t:"n",v:k,s:{alignment:{horizontal:"center"},font:{bold:true},border:XBD}});
+      xPut(wsTA,"B"+R,{t:"n",f:`IFERROR(INDEX($L$2:$L$${hEnd},MATCH(A${R},$N$2:$N$${hEnd},0)),"")`,s:xCell("center")});
+      xPut(wsTA,"C"+R,{t:"s",f:`IFERROR(VLOOKUP(B${R},AHS!$A:$N,4,FALSE),"")`,s:xCell()});
+      xPut(wsTA,"D"+R,{t:"s",f:`IFERROR(VLOOKUP(B${R},AHS!$A:$N,5,FALSE),"")`,s:xCell("center")});
+      xPut(wsTA,"E"+R,{t:"n",f:`IFERROR(VLOOKUP(B${R},AHS!$A:$N,7,FALSE),0)`,s:xNum()});
+      xPut(wsTA,"F"+R,{t:"n",f:`IFERROR(VLOOKUP(B${R},AHS!$A:$N,8,FALSE),0)`,s:xNum()});
+      xPut(wsTA,"G"+R,{t:"n",f:`IFERROR(VLOOKUP(B${R},AHS!$A:$N,9,FALSE),0)`,s:xNum(true)});
+      xPut(wsTA,"H"+R,{t:"n",f:`IFERROR(G${R}/AHS!$I$${A.TR},0)`,s:{numFmt:"0.00%",alignment:{horizontal:"right"},border:XBD}});
+      xPut(wsTA,"I"+R,{t:"n",f:`SUM($H$2:H${R})`,s:{numFmt:"0.00%",alignment:{horizontal:"right"},font:{bold:true},border:XBD}});}
+    const taTR=nA+2;
+    ["A","B","C","D","E","F"].forEach(c=>xPut(wsTA,c+taTR,{t:"s",v:c==="C"?"TOTAL TOP "+nA:"",s:xTotL()}));
+    xPut(wsTA,"G"+taTR,nA?{t:"n",f:`SUM(G2:G${nA+1})`,s:xTot()}:{t:"n",v:0,s:xTot()});
+    xPut(wsTA,"H"+taTR,{t:"n",f:`IFERROR(G${taTR}/AHS!$I$${A.TR},0)`,s:xTot("0.00%")});
+    xPut(wsTA,"I"+taTR,{t:"s",v:"",s:xTotL()});
+    wsTA["!ref"]=XLSXS.utils.encode_range({s:{r:0,c:0},e:{r:Math.max(taTR,hEnd)-1,c:13}});
+    wsTA["!cols"]=[{wch:6},{wch:11},{wch:46},{wch:9},{wch:12},{wch:15},{wch:18},{wch:10},{wch:10},{wch:2},{wch:12},{wch:14},{wch:8}];
 
+    const wsTS={};
+    ["RANK","KODE SD","SUMBER DAYA","UNIT","KATEGORI","VOLUME","HARGA","SUBTOTAL","% TOTAL","KUM %"].forEach((h,c)=>xPut(wsTS,XLSXS.utils.encode_cell({r:0,c}),{t:"s",v:h,s:xHead()}));
+    xPut(wsTS,"M1",{t:"s",v:"— data link (SBDY) —",s:xHelp});xPut(wsTS,"N1",{t:"s",v:"subtotal",s:xHelp});xPut(wsTS,"O1",{t:"s",v:"rank",s:xHelp});
+    const sEnd=S.n+1;
+    for(let i=0;i<S.n;i++){const R=i+2;
+      xPut(wsTS,"M"+R,{t:"s",f:`SBDY!A${R}`,s:xHelp});
+      xPut(wsTS,"N"+R,{t:"n",f:`SBDY!G${R}`,s:xHelp});
+      xPut(wsTS,"O"+R,{t:"n",f:`RANK(N${R},$N$2:$N$${sEnd},0)+COUNTIF($N$2:N${R},N${R})-1`,s:xHelp});}
+    const nS=Math.min(nTop,S.n);
+    for(let k=1;k<=nS;k++){const R=k+1;
+      xPut(wsTS,"A"+R,{t:"n",v:k,s:{alignment:{horizontal:"center"},font:{bold:true},border:XBD}});
+      xPut(wsTS,"B"+R,{t:"s",f:`IFERROR(INDEX($M$2:$M$${sEnd},MATCH(A${R},$O$2:$O$${sEnd},0)),"")`,s:xCell()});
+      xPut(wsTS,"C"+R,{t:"s",f:`IFERROR(VLOOKUP(B${R},SBDY!$A:$H,2,FALSE),"")`,s:xCell()});
+      xPut(wsTS,"D"+R,{t:"s",f:`IFERROR(VLOOKUP(B${R},SBDY!$A:$H,3,FALSE),"")`,s:xCell("center")});
+      xPut(wsTS,"E"+R,{t:"s",f:`IFERROR(VLOOKUP(B${R},SBDY!$A:$H,4,FALSE),"")`,s:xCell("center")});
+      xPut(wsTS,"F"+R,{t:"n",f:`IFERROR(VLOOKUP(B${R},SBDY!$A:$H,5,FALSE),0)`,s:xQty()});
+      xPut(wsTS,"G"+R,{t:"n",f:`IFERROR(VLOOKUP(B${R},SBDY!$A:$H,6,FALSE),0)`,s:xNum()});
+      xPut(wsTS,"H"+R,{t:"n",f:`IFERROR(VLOOKUP(B${R},SBDY!$A:$H,7,FALSE),0)`,s:xNum(true)});
+      xPut(wsTS,"I"+R,{t:"n",f:`IFERROR(H${R}/SBDY!$G$${S.TR},0)`,s:{numFmt:"0.00%",alignment:{horizontal:"right"},border:XBD}});
+      xPut(wsTS,"J"+R,{t:"n",f:`SUM($I$2:I${R})`,s:{numFmt:"0.00%",alignment:{horizontal:"right"},font:{bold:true},border:XBD}});}
+    const tsTR=nS+2;
+    ["A","B","C","D","E","F","G"].forEach(c=>xPut(wsTS,c+tsTR,{t:"s",v:c==="C"?"TOTAL TOP "+nS:"",s:xTotL()}));
+    xPut(wsTS,"H"+tsTR,nS?{t:"n",f:`SUM(H2:H${nS+1})`,s:xTot()}:{t:"n",v:0,s:xTot()});
+    xPut(wsTS,"I"+tsTR,{t:"n",f:`IFERROR(H${tsTR}/SBDY!$G$${S.TR},0)`,s:xTot("0.00%")});
+    xPut(wsTS,"J"+tsTR,{t:"s",v:"",s:xTotL()});
+    wsTS["!ref"]=XLSXS.utils.encode_range({s:{r:0,c:0},e:{r:Math.max(tsTR,sEnd)-1,c:14}});
+    wsTS["!cols"]=[{wch:6},{wch:14},{wch:44},{wch:9},{wch:12},{wch:12},{wch:15},{wch:18},{wch:10},{wch:10},{wch:2},{wch:14},{wch:14},{wch:8}];
+    return {wsTA,wsTS};
+  }
+  // ---- tombol: Export RAB (5 sheet, saling terhubung) ----
+  function exportRAB(){
+    const S=mkSBDY(true),A=mkAHS(true),Bq=mkBOQ(true);const T=mkTOP(A,S);
     const wb=XLSXS.utils.book_new();
-    XLSXS.utils.book_append_sheet(wb,wsB,"BOQ");
-    XLSXS.utils.book_append_sheet(wb,wsA,"AHS");
-    XLSXS.utils.book_append_sheet(wb,wsS,"SBDY");
+    XLSXS.utils.book_append_sheet(wb,Bq.ws,"BOQ");
+    XLSXS.utils.book_append_sheet(wb,A.ws,"AHS");
+    XLSXS.utils.book_append_sheet(wb,S.ws,"SBDY");
+    XLSXS.utils.book_append_sheet(wb,T.wsTA,"TOP AHS");
+    XLSXS.utils.book_append_sheet(wb,T.wsTS,"TOP SBDY");
     XLSXS.writeFile(wb,"RAB_"+discipline+".xlsx");
   }
+  // ---- tombol: Export BOQ (format sama dgn sheet BOQ di Export RAB, mandiri/berisi nilai) ----
   function exportXlsx(){
-    // Unit Rate terpecah: MATERIAL/UPAH/ALAT/SUBKON -> UNIT RATE (=jumlah) -> AMOUNT (=unit rate * vol)
-    const head=["KODE","NO","ITEM PEKERJAAN","UNIT","VOL","MATERIAL","UPAH","ALAT","SUBKON","UNIT RATE","AMOUNT"];
-    const aoa=[head];const formulaRows=[];let no=0;
-    priced.forEach(r=>{if(String(r.item).trim()==="")return;no++;const rt=r.rt;
-      aoa.push([r.code??"",no,r.item,r.unit,r.vol===""?"":parseFloat(r.vol),
-        rt?rt.m:"",rt?rt.l:"",rt?rt.q:"",rt?rt.s:"",null,null]);
-      formulaRows.push(aoa.length);});
-    const totalRowIdx=aoa.length+1; aoa.push(["","","TOTAL","","","","","","",null,null]);
-    const ws=XLSX.utils.aoa_to_sheet(aoa);
-    // J = UNIT RATE = SUM(MATERIAL..SUBKON) ; K = AMOUNT = UNIT RATE * VOL
-    formulaRows.forEach(R=>{ws["J"+R]={t:"n",f:`SUM(F${R}:I${R})`};ws["K"+R]={t:"n",f:`J${R}*E${R}`};});
-    if(formulaRows.length){const first=formulaRows[0],last=formulaRows[formulaRows.length-1];
-      ["F","G","H","I"].forEach(C=>{ws[C+totalRowIdx]={t:"n",f:`SUM(${C}${first}:${C}${last})`};});
-      ws["K"+totalRowIdx]={t:"n",f:`SUM(K${first}:K${last})`};}
-    ws["!cols"]=[{wch:9},{wch:5},{wch:34},{wch:7},{wch:9},{wch:14},{wch:14},{wch:14},{wch:14},{wch:15},{wch:18}];
-    const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,"BOQ Client");XLSX.writeFile(wb,"BOQ_Client_terisi.xlsx");}
+    const wb=XLSXS.utils.book_new();XLSXS.utils.book_append_sheet(wb,mkBOQ(false).ws,"BOQ");
+    XLSXS.writeFile(wb,"BOQ_"+discipline+".xlsx");}
 
   const TABS=[["boq","BOQ",Table2],["ahs","AHS",Layers],["ahsm","AHS Master",Library],["sbdy","SBDY",Boxes],["vendor","Vendor",Scale],["top","Top High Item",Flame]];
 
