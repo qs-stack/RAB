@@ -140,7 +140,7 @@ function Studio({discipline,hidden,onReport,register}){
     let seq=AUTO_BASE;const nextCode=()=>{do{seq++;}while(usedAuto.has(seq));usedAuto.add(seq);return seq;};
     const info={},ahsAdd={};
     const newRows=rows.map(r=>{
-      if(String(r.item).trim()==="")return r;
+      if(r.g||String(r.item).trim()==="")return r;   // baris kelompok = header saja, tanpa AHS
       let code=r.code;
       if(code!=null&&code<AUTO_BASE)return r;                 // sudah punya kode master → biarkan
       if(!(code!=null&&code>=AUTO_BASE))code=nextCode();      // belum berkode → kode auto baru
@@ -160,7 +160,7 @@ function Studio({discipline,hidden,onReport,register}){
   const autoSBDY=(mode)=>{
     const metaAdd={},priceAdd={},ahsSet={};
     rows.forEach(r=>{
-      if(String(r.item).trim()==="")return;
+      if(r.g||String(r.item).trim()==="")return;              // baris kelompok = header saja, tanpa SBDY
       const X=r.code;if(!(X!=null&&X>=AUTO_BASE))return;      // hanya baris hasil Auto AHS
       const nm=r.item,u=r.unit||"Ls";
       const mk=(pfx,label,cat)=>{const rc=pfx+X;metaAdd[rc]={n:label+" "+nm,u,cat};if(prices[rc]==null)priceAdd[rc]=0;return rc;};
@@ -253,14 +253,14 @@ function Studio({discipline,hidden,onReport,register}){
 
   // ---- save / load whole project as JSON ----
   const projRef=useRef();
-  const snapshot=()=>({discipline,catalog,meta,prices,ahs,names,ovr,addc,refs,vendorList,vprices,vgroups,vgroupOf,vref,offers,rows,catSrc,v:3});
+  const snapshot=()=>({discipline,discName:dName(discipline),catalog,meta,prices,ahs,names,ovr,addc,refs,vendorList,vprices,vgroups,vgroupOf,vref,offers,rows,catSrc,v:3});
   function applyProject(d){if(!d)return;
     if(d.catalog)setCatalog(d.catalog);if(d.meta)setMeta(d.meta);if(d.prices)setPrices(d.prices);if(d.ahs)setAhs(d.ahs);
     if(d.names)setNames(d.names);if(d.ovr)setOvr(d.ovr);if(d.addc)setAddc(d.addc);if(d.refs)setRefs(d.refs);if(d.vendorList)setVendorList(d.vendorList);if(d.vprices)setVprices(d.vprices);if(d.vgroups)setVgroups(d.vgroups);if(d.vgroupOf)setVgroupOf(d.vgroupOf);if(d.vref)setVref(d.vref);if(d.offers)setOffers(d.offers);if(d.rows)setRows(d.rows.map(r=>({...r,id:uid()})));if(d.catSrc)setCatSrc(d.catSrc+" (project)");}
   const snapRef=useRef(null);snapRef.current=snapshot;
   useEffect(()=>{if(register)register(discipline,{get:()=>snapRef.current(),set:applyProject});},[register,discipline]);
   function saveProject(){const blob=new Blob([JSON.stringify(snapshot())],{type:"application/json"});
-    const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download="rab_"+(discipline||"PROJECT")+".json";a.click();URL.revokeObjectURL(a.href);}
+    const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download="rab_"+(dName(discipline)||"PROJECT")+".json";a.click();URL.revokeObjectURL(a.href);}
   function loadProject(file){const fr=new FileReader();fr.onload=e=>{try{applyProject(JSON.parse(e.target.result));
   }catch(err){alert("File project tidak valid: "+err.message);}};fr.readAsText(file);}
 
@@ -606,7 +606,7 @@ function Studio({discipline,hidden,onReport,register}){
     XLSXS.utils.book_append_sheet(wb,S.ws,"SBDY");
     XLSXS.utils.book_append_sheet(wb,T.wsTA,"TOP AHS");
     XLSXS.utils.book_append_sheet(wb,T.wsTS,"TOP SBDY");
-    XLSXS.writeFile(wb,"RAB_"+discipline+".xlsx");
+    XLSXS.writeFile(wb,"RAB_"+dName(discipline)+".xlsx");
   }
   // ---- tombol: Export BOQ (format sama dgn sheet BOQ di Export RAB, mandiri/berisi nilai) ----
   function exportXlsx(){
@@ -685,7 +685,7 @@ function BoqTab({priced,itemRows,total,matched,flagged,catalog,rates,upd,del,add
   const clientRef=useRef();
   const [applyOpen,setApplyOpen]=useState(false);const [armClear,setArmClear]=useState(false);const [sbdyOpen,setSbdyOpen]=useState(false);
   const hasAuto=priced.some(r=>r.code!=null&&r.code>=AUTO_BASE);
-  const bestList=useMemo(()=>{const out=[];priced.forEach(r=>{if(r.code!=null||String(r.item).trim()==="")return;
+  const bestList=useMemo(()=>{const out=[];priced.forEach(r=>{if(r.g||r.code!=null||String(r.item).trim()==="")return;
     const b=catalog.map(c=>({c,s:score(r.item,r.unit,c)})).sort((x,y)=>y.s-x.s)[0];
     if(b&&b.s>0)out.push({id:r.id,code:b.c.c,tier:b.s>=4?"cocok":b.s>=2?"mungkin":"lemah"});});return out;},[priced,catalog]);
   const cnt={all:bestList.length,cocok:0,mungkin:0,lemah:0};bestList.forEach(x=>cnt[x.tier]++);
@@ -1293,7 +1293,7 @@ const DISC_COL={CIVIL:"#4F46E5",MECHANICAL:"#0D9488",PIPING:"#D97706",ELECTRICAL
 function BarX({rank,disc,code,name,val,max,pct,cum,vol,uom,unit}){const color=DISC_COL[disc]||COL.steel;return <div style={{marginBottom:11}}>
   <div style={{display:"flex",gap:8,alignItems:"baseline",marginBottom:3}}>
     <span style={{fontFamily:FM,fontSize:11,color:COL.sub,minWidth:18}}>{rank<10?"0":""}{rank}</span>
-    <span style={{fontFamily:FM,fontSize:9.5,fontWeight:700,color:"#fff",background:color,padding:"1.5px 6px",borderRadius:5,letterSpacing:.3}}>{disc}</span>
+    <span style={{fontFamily:FM,fontSize:9.5,fontWeight:700,color:"#fff",background:color,padding:"1.5px 6px",borderRadius:5,letterSpacing:.3}}>{dName(disc)}</span>
     <span style={{fontFamily:FM,fontSize:11.5,color:color,fontWeight:600}}>{code}</span>
     <span style={{fontSize:11.5,color:COL.ink,flex:1,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{name}</span>
     <span style={{fontFamily:FM,fontSize:11.5,fontWeight:600}}>{rp(val)}{pct!=null&&<span style={{color:COL.sub,fontWeight:400}}> · {(pct*100).toFixed(1)}%</span>}{cum!=null&&<span style={{color:color,fontWeight:600}}> · Σ{(cum*100).toFixed(1)}%</span>}</span></div>
@@ -1337,7 +1337,7 @@ function TopAllView({reports}){
     <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:16}}>
       {perDisc.map(x=><div key={x.d} style={{display:"flex",alignItems:"center",gap:7,background:COL.panel,border:`1px solid ${COL.line}`,borderRadius:10,padding:"7px 12px"}}>
         <span style={{width:9,height:9,borderRadius:3,background:DISC_COL[x.d]}}/>
-        <span style={{fontFamily:FM,fontSize:11,fontWeight:600,color:COL.ink}}>{x.d}</span>
+        <span style={{fontFamily:FM,fontSize:11,fontWeight:600,color:COL.ink}}>{dName(x.d)}</span>
         <span style={{fontFamily:FM,fontSize:11,color:COL.sub}}>{rp(x.v)} · {(x.v/grand*100).toFixed(1)}%</span></div>)}
     </div>
     <div style={{background:COL.panel,borderRadius:16,boxShadow:SHADOW,padding:"16px 18px"}}>
@@ -1368,7 +1368,7 @@ function ResumeView({reports}){
         <div style={{display:"flex",gap:10,flexWrap:"wrap",marginTop:10}}>
           {DISCIPLINES.map(d=><div key={d} style={{display:"flex",alignItems:"center",gap:5}}>
             <span style={{width:8,height:8,borderRadius:2,background:DISC_COL[d]}}/>
-            <span style={{fontFamily:FM,fontSize:10.5,color:COL.sub}}>{d}</span></div>)}
+            <span style={{fontFamily:FM,fontSize:10.5,color:COL.sub}}>{dName(d)}</span></div>)}
         </div></div>
     </div>
     <div style={{background:COL.panel,borderRadius:16,boxShadow:SHADOW,overflow:"hidden"}}>
@@ -1377,7 +1377,7 @@ function ResumeView({reports}){
       {sorted.map(x=><div key={x.d} style={{display:"grid",gridTemplateColumns:"1.4fr 130px 90px 90px 1fr",padding:"12px 18px",borderBottom:`1px solid ${COL.line}`,alignItems:"center"}}>
         <div style={{display:"flex",alignItems:"center",gap:9}}>
           <span style={{width:10,height:10,borderRadius:3,background:DISC_COL[x.d]}}/>
-          <span style={{fontFamily:FB,fontWeight:600,fontSize:13,color:COL.ink}}>{x.d}</span>
+          <span style={{fontFamily:FB,fontWeight:600,fontSize:13,color:COL.ink}}>{dName(x.d)}</span>
           {!x.open&&<span style={{fontFamily:FM,fontSize:10,color:COL.amber,background:"#FEF3E2",padding:"1px 7px",borderRadius:5}}>belum dibuka</span>}</div>
         <div style={{textAlign:"right",fontFamily:FM,fontSize:12.5,fontWeight:600,color:x.total?COL.ink:COL.sub}}>{x.total?rp(x.total):"–"}</div>
         <div style={{textAlign:"right",fontFamily:FM,fontSize:12,color:COL.sub}}>{grand&&x.total?(x.total/grand*100).toFixed(1)+"%":"–"}</div>
@@ -1396,19 +1396,92 @@ const PA_DEF=[["SURVEYING WORKS","Ls",1,200000000],["PERMIT","Ls",1,1000000000],
 const PC_DEF=[["Indirect Cost (gaji, overhead, dll)","Month",24,1000000000],["Warranty Cost","Month",12,100000000]];
 const PD_DEF=[["Risiko Teknis",0.005],["Risiko Inflasi",0],["Risiko LD",0],["Risiko Kurs",0],["Risiko Contingency",0]];
 const PE_DEF=[["Provision Bond","pct",0.006,0],["Asuransi (CAR & BPJSTK)","pct",0.004,0],["QA & HSE Cost","pct",0.005,0],["Development Cost","pct",0,0],["Biaya Sosial","pct",0,0],["Spare for Negotiation","pct",0,0],["PPh Final pasal 23","pct",0.0265,0]];
-const PGRID="34px minmax(0,1fr) 78px 104px 150px 158px 60px 30px";
+const PGRID="34px minmax(0,1fr) 78px 104px 150px 158px 60px 62px";
 
-function PengesahanView({reports,hidden,register}){
+
+/* ---------- TAB SP: kertas kerja Site Preparation (item -> breakdown sumber daya) ---------- */
+let _spid=1;const spid=p=>p+(_spid++);
+const SP_SEED=[["SURVEYING WORKS","Ls",1,200000000],["PERMIT","Ls",1,1000000000],["MOB-DEMOB","Ls",1,2000000000],["SITE FACILITIES","Ls",1,3000000000],["MESS PEKERJA","Ls",1,1000000000],["DEWATERING","Ls",1,500000000],["SUPPORT EQUIPMENT","Ls",1,5000000000],["ELECTRICITY","Ls",1,3000000000],["WATER CONSUMPTION","Ls",1,200000000],["SCAFFOLDING","Ls",1,200000000],["TOOLS","Ls",1,100000000],["QC TEST","Ls",1,100000000]];
+const spRate=it=>(it.comps&&it.comps.length)?it.comps.reduce((t,c)=>t+(c.qty||0)*(c.price||0),0):(it.rate||0);
+const spAmt=it=>(it.qty||0)*spRate(it);
+
+function SPView({sp,setSp,hidden}){
+  const [open,setOpen]=useState({});
+  const up=(id,k,v)=>setSp(s=>s.map(x=>x.id===id?{...x,[k]:v}:x));
+  const del=id=>setSp(s=>s.filter(x=>x.id!==id));
+  const add=()=>setSp(s=>[...s,{id:spid("sp"),desc:"",unit:"Ls",qty:1,rate:0,comps:[]}]);
+  const mv=(id,d)=>setSp(s=>{const i=s.findIndex(x=>x.id===id);const j=i+d;if(i<0||j<0||j>=s.length)return s;const c=[...s];const t=c[i];c[i]=c[j];c[j]=t;return c;});
+  const seed=()=>setSp(SP_SEED.map(r=>({id:spid("sp"),desc:r[0],unit:r[1],qty:r[2],rate:r[3],comps:[]})));
+  const addC=id=>{setSp(s=>s.map(x=>x.id===id?{...x,comps:[...(x.comps||[]),{id:spid("c"),name:"",unit:"",qty:1,price:0}]}:x));setOpen(o=>({...o,[id]:true}));};
+  const upC=(id,cid,k,v)=>setSp(s=>s.map(x=>x.id===id?{...x,comps:x.comps.map(c=>c.id===cid?{...c,[k]:v}:c)}:x));
+  const delC=(id,cid)=>setSp(s=>s.map(x=>x.id===id?{...x,comps:x.comps.filter(c=>c.id!==cid)}:x));
+  const total=sp.reduce((t,x)=>t+spAmt(x),0);
+  const inp=(al)=>({width:"100%",boxSizing:"border-box",border:`1px solid ${COL.line}`,borderRadius:7,padding:"6px 8px",fontFamily:al==="left"?FB:FM,fontSize:12,textAlign:al||"left",background:"#fff",color:COL.ink,outline:"none"});
+  const G="30px minmax(0,1fr) 76px 96px 150px 152px 60px";
+  const head={display:"grid",gridTemplateColumns:G,gap:6,padding:"9px 14px",background:"#11151C",color:"rgba(255,255,255,.75)",fontFamily:FM,fontSize:10,letterSpacing:.5,textTransform:"uppercase",borderRadius:"14px 14px 0 0"};
+  return <div style={{display:hidden?"none":undefined,background:COL.paper,minHeight:"100vh"}}>
+    <div style={{maxWidth:1180,margin:"0 auto",padding:"26px 22px 70px"}}>
+      <div style={{fontFamily:FD,fontWeight:700,fontSize:24,color:COL.ink,letterSpacing:-.4}}>Site Preparation</div>
+      <div style={{color:COL.sub,fontSize:13.5,marginTop:5,marginBottom:16,maxWidth:720,lineHeight:1.5}}>Kertas kerja SP. Tiap item bisa dirinci jadi breakdown sumber daya (seperti AHS): unit rate = jumlah koefisien × harga. Item tanpa breakdown boleh diisi unit rate langsung. Totalnya otomatis masuk ke <b>Bagian A</b> di tab Pengesahan.</div>
+      <div style={{display:"flex",gap:8,marginBottom:14,flexWrap:"wrap",alignItems:"center"}}>
+        <button className="btn" onClick={add} style={{padding:"8px 13px",fontSize:12.5,display:"flex",gap:6,alignItems:"center",background:COL.steel,color:"#fff",borderColor:COL.steel}}><Plus size={14}/>Tambah item SP</button>
+        {sp.length===0&&<button className="btn" onClick={seed} style={{padding:"8px 13px",fontSize:12.5,color:COL.sub}}>Muat 12 item standar</button>}
+        <span style={{marginLeft:"auto",fontFamily:FM,fontSize:12,color:COL.sub}}>Total SP <b style={{color:COL.ink,fontSize:14}}>{rp(total)}</b></span>
+      </div>
+      <div style={{background:COL.panel,borderRadius:16,boxShadow:SHADOW,overflow:"hidden"}}>
+        <div style={head}><div style={{textAlign:"center"}}>No</div><div>Item pekerjaan SP</div><div style={{textAlign:"center"}}>Unit</div><div style={{textAlign:"right"}}>Qty</div><div style={{textAlign:"right"}}>Unit rate</div><div style={{textAlign:"right"}}>Amount</div><div/></div>
+        {sp.length===0&&<div style={{padding:"40px 20px",textAlign:"center",color:COL.sub,fontSize:13}}>Belum ada item SP. Tambah manual atau muat 12 item standar.</div>}
+        {sp.map((it,i)=>{const rate=spRate(it),amt=spAmt(it),hasC=(it.comps||[]).length>0,op=!!open[it.id];
+          return <div key={it.id} style={{borderBottom:`1px solid ${COL.line}`}}>
+            <div style={{display:"grid",gridTemplateColumns:G,gap:6,alignItems:"center",padding:"6px 14px"}}>
+              <div style={{display:"flex",alignItems:"center",gap:3}}>
+                <button onClick={()=>setOpen(o=>({...o,[it.id]:!op}))} title="Lihat breakdown" style={{border:"none",background:"transparent",cursor:"pointer",color:hasC?COL.steel:COL.sub,fontFamily:FM,fontSize:11,padding:0}}>{op?"▾":"▸"}</button>
+                <span style={{fontFamily:FM,fontSize:11,color:COL.sub}}>{i+1}</span></div>
+              <input value={it.desc} placeholder="Nama item SP" onChange={e=>up(it.id,"desc",e.target.value)} style={inp("left")}/>
+              <input value={it.unit} onChange={e=>up(it.id,"unit",e.target.value)} style={inp("center")}/>
+              <NumInput value={it.qty} onChange={v=>up(it.id,"qty",v)} thousands style={inp("right")}/>
+              {hasC?<div style={{textAlign:"right",fontFamily:FM,fontSize:12,color:COL.steel,fontWeight:600}}>{rp(rate)}<span style={{color:COL.sub,fontWeight:400,fontSize:10}}> · dari breakdown</span></div>
+                   :<NumInput value={it.rate} onChange={v=>up(it.id,"rate",v)} thousands style={inp("right")}/>}
+              <div style={{textAlign:"right",fontFamily:FM,fontSize:12.5,fontWeight:600}}>{rp(amt)}</div>
+              <div style={{display:"flex",gap:2,justifyContent:"flex-end",alignItems:"center"}}>
+                <button onClick={()=>mv(it.id,-1)} disabled={i===0} style={{border:"none",background:"transparent",cursor:"pointer",color:COL.sub,fontSize:11,opacity:i===0?.25:1,padding:0,width:14}}>▲</button>
+                <button onClick={()=>mv(it.id,1)} disabled={i===sp.length-1} style={{border:"none",background:"transparent",cursor:"pointer",color:COL.sub,fontSize:11,opacity:i===sp.length-1?.25:1,padding:0,width:14}}>▼</button>
+                <button onClick={()=>del(it.id)} style={{border:"none",background:"transparent",cursor:"pointer",color:COL.red,display:"flex",padding:0}}><Trash2 size={13}/></button></div>
+            </div>
+            {op&&<div style={{background:COL.paper,padding:"8px 14px 12px 46px",borderTop:`1px dashed ${COL.line}`}}>
+              <div style={{display:"grid",gridTemplateColumns:"minmax(0,1fr) 76px 96px 130px 130px 26px",gap:6,fontFamily:FM,fontSize:9.5,color:COL.sub,textTransform:"uppercase",letterSpacing:.5,marginBottom:5}}>
+                <div>Sumber daya</div><div style={{textAlign:"center"}}>Sat.</div><div style={{textAlign:"right"}}>Koef</div><div style={{textAlign:"right"}}>Harga</div><div style={{textAlign:"right"}}>Subtotal</div><div/></div>
+              {(it.comps||[]).map(c=><div key={c.id} style={{display:"grid",gridTemplateColumns:"minmax(0,1fr) 76px 96px 130px 130px 26px",gap:6,alignItems:"center",marginBottom:4}}>
+                <input value={c.name} placeholder="nama sumber daya" onChange={e=>upC(it.id,c.id,"name",e.target.value)} style={inp("left")}/>
+                <input value={c.unit} onChange={e=>upC(it.id,c.id,"unit",e.target.value)} style={inp("center")}/>
+                <NumInput value={c.qty} onChange={v=>upC(it.id,c.id,"qty",v)} style={inp("right")}/>
+                <NumInput value={c.price} onChange={v=>upC(it.id,c.id,"price",v)} thousands style={inp("right")}/>
+                <div style={{textAlign:"right",fontFamily:FM,fontSize:11.5}}>{rp((c.qty||0)*(c.price||0))}</div>
+                <button onClick={()=>delC(it.id,c.id)} style={{border:"none",background:"transparent",cursor:"pointer",color:COL.red,display:"flex",padding:0}}><Trash2 size={12}/></button></div>)}
+              <button className="btn" onClick={()=>addC(it.id)} style={{marginTop:4,padding:"5px 11px",fontSize:11.5,display:"inline-flex",gap:5,alignItems:"center",border:`1px dashed ${COL.steel}`,color:COL.steel,background:"#fff"}}><Plus size={12}/>tambah sumber daya</button>
+            </div>}
+          </div>;})}
+        {sp.length>0&&<div style={{display:"grid",gridTemplateColumns:G,gap:6,alignItems:"center",padding:"12px 14px",background:COL.chipbg}}>
+          <div/><div style={{fontFamily:FD,fontWeight:700,fontSize:13,color:COL.ink}}>TOTAL SITE PREPARATION</div><div/><div/><div/>
+          <div style={{textAlign:"right",fontFamily:FM,fontWeight:700,fontSize:13.5}}>{rp(total)}</div><div/></div>}
+      </div>
+    </div></div>;
+}
+
+function PengesahanView({reports,hidden,register,sp}){
   const idRef=useRef(1000);const nid=p=>p+(idRef.current++);
   const [secA,setSecA]=useState(()=>PA_DEF.map((r,i)=>({id:"a"+i,desc:r[0],unit:r[1],qty:r[2],rate:r[3]})));
   const [secC,setSecC]=useState(()=>PC_DEF.map((r,i)=>({id:"c"+i,desc:r[0],unit:r[1],qty:r[2],rate:r[3]})));
   const [secD,setSecD]=useState(()=>PD_DEF.map((r,i)=>({id:"d"+i,desc:r[0],pct:r[1]})));
   const [secE,setSecE]=useState(()=>PE_DEF.map((r,i)=>({id:"e"+i,desc:r[0],mode:r[1],pct:r[2],amt:r[3]})));
   const [mosPct,setMosPct]=useState(0.08);
+  const mvIn=(setter)=>(id,dir)=>setter(s=>{const i=s.findIndex(r=>r.id===id);const j=i+dir;
+    if(i<0||j<0||j>=s.length)return s;const c=[...s];const t=c[i];c[i]=c[j];c[j]=t;return c;});
   const upA=(id,k,v)=>setSecA(s=>s.map(r=>r.id===id?{...r,[k]:v}:r)),delA=id=>setSecA(s=>s.filter(r=>r.id!==id)),addA=()=>setSecA(s=>[...s,{id:nid("a"),desc:"",unit:"Ls",qty:1,rate:0}]);
   const upC=(id,k,v)=>setSecC(s=>s.map(r=>r.id===id?{...r,[k]:v}:r)),delC=id=>setSecC(s=>s.filter(r=>r.id!==id)),addC=(mode="calc")=>setSecC(s=>[...s,{id:nid("c"),desc:"",unit:"Ls",qty:1,rate:0,amt:0,mode}]);
   const upD=(id,k,v)=>setSecD(s=>s.map(r=>r.id===id?{...r,[k]:v}:r)),delD=id=>setSecD(s=>s.filter(r=>r.id!==id)),addD=()=>setSecD(s=>[...s,{id:nid("d"),desc:"",pct:0}]);
   const upE=(id,k,v)=>setSecE(s=>s.map(r=>r.id===id?{...r,[k]:v}:r)),delE=id=>setSecE(s=>s.filter(r=>r.id!==id)),addE=(mode="pct")=>setSecE(s=>[...s,{id:nid("e"),desc:"",mode,pct:0,amt:0}]);
+  const mvA=mvIn(setSecA),mvC=mvIn(setSecC),mvD=mvIn(setSecD),mvE=mvIn(setSecE);
 
   const MONTHS=["Januari","Februari","Maret","April","Mei","Juni","Juli","Agustus","September","Oktober","November","Desember"];
   const _td=new Date();const todayStr=_td.getDate()+" "+MONTHS[_td.getMonth()]+" "+_td.getFullYear();
@@ -1423,7 +1496,9 @@ function PengesahanView({reports,hidden,register}){
   const fileRef=useRef(null);
   const liveB=DISCIPLINES.map(d=>({d,total:(reports[d]&&reports[d].total)||0})).filter(x=>x.total>0);
   const bRows=liveB.length?liveB:(savedDirect||[]);
-  const A=secA.reduce((s,r)=>s+(r.qty||0)*(r.rate||0),0);
+  const spRows=(sp||[]).filter(x=>String(x.desc||"").trim()!==""||spAmt(x)>0);
+  const spTotal=spRows.reduce((t,x)=>t+spAmt(x),0);
+  const A=secA.reduce((s,r)=>s+(r.qty||0)*(r.rate||0),0)+spTotal;
   const B=bRows.reduce((s,r)=>s+r.total,0);
   const C=secC.reduce((s,r)=>s+((r.mode==="amt")?(r.amt||0):(r.qty||0)*(r.rate||0)),0);
   const FIXED=A+B+C;
@@ -1455,8 +1530,8 @@ function PengesahanView({reports,hidden,register}){
     const sub=(label,amt,pct)=>`<tr class="sub"><td></td><td>${label}</td><td></td><td></td><td></td><td class="r b">${amt}</td><td class="r">${pct}</td></tr>`;
     const sh=(letter,title,bg)=>`<tr class="sh"><td colspan="5" style="background:${bg}">${letter} &nbsp;&nbsp; ${esc(title)}</td><td class="r" style="background:${bg}"></td><td style="background:${bg}"></td></tr>`;
     let rows="";
-    rows+=sh("A","SITE PREPARATION","#E8EAFD");if(open.A)secA.forEach((r,i)=>{const a=(r.qty||0)*(r.rate||0);rows+=tr(i+1,r.desc,r.unit,grp(r.qty),rp(r.rate),rp(a),pc(a));});rows+=sub("SUB-TOTAL A",rp(A),pc(A));
-    rows+=sh("B","DIRECT COST","#E1F2F0");if(open.B)bRows.forEach((r,i)=>{rows+=tr("B."+(i+1),r.d,"Ls","1","dari Resume",rp(r.total),pc(r.total));});rows+=sub("SUB-TOTAL B",rp(B),pc(B));
+    rows+=sh("A","SITE PREPARATION","#E8EAFD");if(open.A){spRows.forEach((x,i)=>{const a=spAmt(x);rows+=tr(i+1,x.desc,x.unit||"Ls",grp(x.qty),rp(spRate(x)),rp(a),pc(a));});secA.forEach((r,i)=>{const a=(r.qty||0)*(r.rate||0);rows+=tr(spRows.length+i+1,r.desc,r.unit,grp(r.qty),rp(r.rate),rp(a),pc(a));});}rows+=sub("SUB-TOTAL A",rp(A),pc(A));
+    rows+=sh("B","DIRECT COST","#E1F2F0");if(open.B)bRows.forEach((r,i)=>{rows+=tr("B."+(i+1),dName(r.d),"Ls","1","dari Resume",rp(r.total),pc(r.total));});rows+=sub("SUB-TOTAL B",rp(B),pc(B));
     rows+=sh("C","INDIRECT COST","#FCEFD9");if(open.C)secC.forEach((r,i)=>{const m=r.mode||"calc";const a=m==="amt"?(r.amt||0):(r.qty||0)*(r.rate||0);rows+=tr("C."+(i+1),r.desc,r.unit,m==="amt"?"":grp(r.qty),m==="amt"?"nominal":rp(r.rate),rp(a),pc(a));});rows+=sub("SUB-TOTAL C",rp(C),pc(C));
     rows+=sh("D","UNCOVERABLE CONSTRUCTION RISK","#FCE3E9");if(open.D)secD.forEach((r,i)=>{const a=(r.pct||0)*SALES;rows+=tr("D."+(i+1),r.desc,"%",(r.pct*100).toFixed(2)+"%","x Sales",rp(a),pc(a));});rows+=sub("SUB-TOTAL D",rp(D),pc(D));
     rows+=sh("E","OTHER EXPENSE","#EFE7FB");if(open.E)secE.forEach((r,i)=>{const a=r.mode==="pct"?(r.pct||0)*SALES:(r.amt||0);const q=r.mode==="pct"?(r.pct*100).toFixed(2)+"%":"";const rt=r.mode==="pct"?"x Sales":"nominal";rows+=tr("E."+(i+1),r.desc,r.mode==="pct"?"%":"Rp",q,rt,rp(a),pc(a));});rows+=sub("SUB-TOTAL E",rp(E),pc(E));
@@ -1491,6 +1566,12 @@ tr.sales td{background:#141821;color:#fff;font-weight:800;font-size:11px;}
   const inp=(align="left")=>({width:"100%",boxSizing:"border-box",border:"1px solid "+COL.line,borderRadius:7,padding:"6px 8px",fontFamily:align==="left"?FB:FM,fontSize:12,textAlign:align,background:"#fff",color:COL.ink,outline:"none"});
   const ROW={display:"grid",gridTemplateColumns:PGRID,gap:6,alignItems:"center",padding:"5px 14px",borderBottom:"1px solid "+COL.line};
   const cNo={fontFamily:FM,fontSize:11,color:COL.sub,textAlign:"center"},cAmt={fontFamily:FM,fontSize:12.5,fontWeight:600,textAlign:"right",color:COL.ink},cPct={fontFamily:FM,fontSize:11,textAlign:"right",color:COL.sub},muted={textAlign:"right",fontFamily:FM,fontSize:10.5,color:COL.sub};
+  const ctlBtn={border:"none",background:"transparent",cursor:"pointer",color:COL.sub,padding:0,lineHeight:1,fontSize:11,width:14};
+  const rowCtl=(mv,del,id,i,len)=><div style={{display:"flex",alignItems:"center",gap:2,justifyContent:"flex-end"}}>
+    <button onClick={()=>mv(id,-1)} disabled={i===0} title="Naik" style={{...ctlBtn,opacity:i===0?.25:1,cursor:i===0?"default":"pointer"}}>▲</button>
+    <button onClick={()=>mv(id,1)} disabled={i===len-1} title="Turun" style={{...ctlBtn,opacity:i===len-1?.25:1,cursor:i===len-1?"default":"pointer"}}>▼</button>
+    <button onClick={()=>del(id)} title="Hapus" style={{border:"none",background:"transparent",cursor:"pointer",color:COL.red,padding:0,display:"flex"}}><Trash2 size={13}/></button>
+  </div>;
   const delBtn={border:"none",background:"transparent",cursor:"pointer",color:COL.red,display:"flex",justifyContent:"center",padding:0};
   const addBtn={margin:"8px 0 4px 48px",display:"inline-flex",alignItems:"center",gap:5,border:"1px dashed "+COL.steel,background:"#fff",color:COL.steel,borderRadius:8,padding:"6px 12px",fontSize:12,cursor:"pointer",fontFamily:FB,fontWeight:500};
   const band=c=>({display:"flex",alignItems:"center",gap:11,padding:"11px 14px",background:c,color:"#fff"});
@@ -1502,14 +1583,14 @@ tr.sales td{background:#141821;color:#fff;font-weight:800;font-size:11px;}
   const subRow=(label,val,accent)=><div style={{display:"grid",gridTemplateColumns:PGRID,gap:6,alignItems:"center",padding:"9px 14px",background:COL.paper,borderTop:"2px solid "+accent,borderBottom:"1px solid "+COL.line}}>
     <div/><div style={{fontFamily:FD,fontWeight:700,fontSize:12.5,color:COL.ink}}>{label}</div><div/><div/><div/>
     <div style={{...cAmt,fontWeight:700}}>{rp(val)}</div><div style={cPct}>{(pof(val)*100).toFixed(2)}%</div><div/></div>;
-  const costRow=(r,no,up,del)=>{const amt=(r.qty||0)*(r.rate||0);return <div key={r.id} style={ROW}>
+  const costRow=(r,no,up,del,mv,i,len)=>{const amt=(r.qty||0)*(r.rate||0);return <div key={r.id} style={ROW}>
     <div style={cNo}>{no}</div>
     <input value={r.desc} placeholder="Deskripsi item" onChange={e=>up(r.id,"desc",e.target.value)} style={inp("left")}/>
     <input value={r.unit} onChange={e=>up(r.id,"unit",e.target.value)} style={inp("center")}/>
     <NumInput value={r.qty} onChange={v=>up(r.id,"qty",v)} thousands style={inp("right")}/>
     <NumInput value={r.rate} onChange={v=>up(r.id,"rate",v)} thousands style={inp("right")}/>
     <div style={cAmt}>{rp(amt)}</div><div style={cPct}>{(pof(amt)*100).toFixed(2)}%</div>
-    <button onClick={()=>del(r.id)} style={delBtn}><Trash2 size={13}/></button></div>;};
+    {rowCtl(mv,del,r.id,i,len)}</div>;};
 
   const colHead=<div style={{display:"grid",gridTemplateColumns:PGRID,gap:6,padding:"9px 14px",background:"#11151C",color:"rgba(255,255,255,.75)",fontFamily:FM,fontSize:10,letterSpacing:.5,textTransform:"uppercase",borderRadius:"14px 14px 0 0"}}>
     <div style={{textAlign:"center"}}>No</div><div>Description</div><div style={{textAlign:"center"}}>Unit</div><div style={{textAlign:"right"}}>Qty</div><div style={{textAlign:"right"}}>Unit Rate</div><div style={{textAlign:"right"}}>Amount</div><div style={{textAlign:"right"}}>%</div><div/></div>;
@@ -1562,7 +1643,17 @@ tr.sales td{background:#141821;color:#fff;font-weight:800;font-size:11px;}
 
       <div style={{background:COL.panel,borderRadius:"0 0 16px 16px",boxShadow:SHADOW,overflow:"hidden"}}>
         {secBand("A","SITE PREPARATION",A,COL.steel,"A")}
-        {open.A&&<>{secA.map((r,i)=>costRow(r,i+1,upA,delA))}
+        {open.A&&<>{spRows.map((x,i)=>{const amt=spAmt(x);return <div key={x.id} style={{...ROW,background:"#FAFBFF"}}>
+          <div style={cNo}>{i+1}</div>
+          <div style={{display:"flex",alignItems:"center",gap:7,minWidth:0}}>
+            <span style={{fontFamily:FM,fontSize:9,fontWeight:700,color:"#fff",background:COL.steel,padding:"1px 5px",borderRadius:4}}>SP</span>
+            <span style={{fontSize:12.5,color:COL.ink,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{x.desc||"(tanpa nama)"}</span></div>
+          <div style={{textAlign:"center",fontFamily:FM,fontSize:12,color:COL.sub}}>{x.unit||"Ls"}</div>
+          <div style={{textAlign:"right",fontFamily:FM,fontSize:12,color:COL.sub}}>{grp(x.qty)}</div>
+          <div style={{textAlign:"right",fontFamily:FM,fontSize:12,color:COL.sub}}>{rp(spRate(x))}</div>
+          <div style={cAmt}>{rp(amt)}</div><div style={cPct}>{(pof(amt)*100).toFixed(2)}%</div>
+          <div style={{textAlign:"right",fontFamily:FM,fontSize:9.5,color:COL.sub}}>tab SP</div></div>;})}
+        {secA.map((r,i)=>costRow(r,spRows.length+i+1,upA,delA,mvA,i,secA.length))}
         <div style={{padding:"0 0 6px"}}><button onClick={addA} style={addBtn}><Plus size={13}/>tambah item A</button></div>
         {subRow("SUB-TOTAL A",A,COL.steel)}</>}
 
@@ -1570,7 +1661,7 @@ tr.sales td{background:#141821;color:#fff;font-weight:800;font-size:11px;}
         {open.B&&<>{bRows.length===0?<div style={{padding:"16px 16px",color:COL.sub,fontSize:12.5,fontFamily:FB}}>Belum ada disiplin berisi data. Buka &amp; kerjakan RAB tiap disiplin (CIVIL, MECHANICAL, dst.), nilainya otomatis masuk ke sini.</div>
         :bRows.map((r,i)=><div key={r.d} style={ROW}>
           <div style={cNo}>B.{i+1}</div>
-          <div style={{display:"flex",alignItems:"center",gap:8}}><span style={{width:10,height:10,borderRadius:3,background:DISC_COL[r.d]}}/><span style={{fontFamily:FB,fontWeight:600,fontSize:12.5,color:COL.ink}}>{r.d}</span></div>
+          <div style={{display:"flex",alignItems:"center",gap:8}}><span style={{width:10,height:10,borderRadius:3,background:DISC_COL[r.d]}}/><span style={{fontFamily:FB,fontWeight:600,fontSize:12.5,color:COL.ink}}>{dName(r.d)}</span></div>
           <div style={{textAlign:"center",fontFamily:FM,fontSize:12,color:COL.sub}}>Ls</div><div style={{textAlign:"right",fontFamily:FM,fontSize:12,color:COL.sub}}>1</div>
           <div style={muted}>dari Resume</div><div style={cAmt}>{rp(r.total)}</div><div style={cPct}>{(pof(r.total)*100).toFixed(2)}%</div><div/></div>)}
         {subRow("SUB-TOTAL B",B,COL.teal)}</>}
@@ -1584,7 +1675,7 @@ tr.sales td{background:#141821;color:#fff;font-weight:800;font-size:11px;}
           {m==="calc"?<NumInput value={r.rate} onChange={v=>upC(r.id,"rate",v)} thousands style={inp("right")}/>:<div style={muted}>nominal</div>}
           {m==="calc"?<div style={cAmt}>{rp(amt)}</div>:<NumInput value={r.amt} onChange={v=>upC(r.id,"amt",v)} thousands style={inp("right")}/>}
           <div style={cPct}>{(pof(amt)*100).toFixed(2)}%</div>
-          <button onClick={()=>delC(r.id)} style={delBtn}><Trash2 size={13}/></button></div>;})}
+          {rowCtl(mvC,delC,r.id,i,secC.length)}</div>;})}
         <div style={{padding:"2px 0 6px 48px",display:"flex",gap:8}}><button onClick={()=>addC("calc")} style={{...addBtn,margin:0}}><Plus size={13}/>qty × rate</button><button onClick={()=>addC("amt")} style={{...addBtn,margin:0}}><Plus size={13}/>amount langsung</button></div>
         {subRow("SUB-TOTAL C",C,COL.amber)}</>}
 
@@ -1595,7 +1686,7 @@ tr.sales td{background:#141821;color:#fff;font-weight:800;font-size:11px;}
           <div style={{textAlign:"center",fontFamily:FM,fontSize:11,color:COL.sub}}>%</div>
           {pctCell(r.pct,v=>upD(r.id,"pct",v))}
           <div style={muted}>× Sales</div><div style={cAmt}>{rp(amt)}</div><div style={cPct}>{(pof(amt)*100).toFixed(2)}%</div>
-          <button onClick={()=>delD(r.id)} style={delBtn}><Trash2 size={13}/></button></div>;})}
+          {rowCtl(mvD,delD,r.id,i,secD.length)}</div>;})}
         <div style={{padding:"0 0 6px"}}><button onClick={addD} style={addBtn}><Plus size={13}/>tambah item risiko</button></div>
         {subRow("SUB-TOTAL D",D,"#E11D48")}</>}
 
@@ -1608,7 +1699,7 @@ tr.sales td{background:#141821;color:#fff;font-weight:800;font-size:11px;}
           {r.mode==="pct"?<div style={muted}>× Sales</div>:<div style={muted}>nominal</div>}
           {r.mode==="pct"?<div style={cAmt}>{rp(amt)}</div>:<NumInput value={r.amt} onChange={v=>upE(r.id,"amt",v)} thousands style={inp("right")}/>}
           <div style={cPct}>{(pof(amt)*100).toFixed(2)}%</div>
-          <button onClick={()=>delE(r.id)} style={delBtn}><Trash2 size={13}/></button></div>;})}
+          {rowCtl(mvE,delE,r.id,i,secE.length)}</div>;})}
         <div style={{padding:"2px 0 6px 48px",display:"flex",gap:8}}><button onClick={()=>addE("pct")} style={{...addBtn,margin:0}}><Plus size={13}/>% Sales</button><button onClick={()=>addE("amt")} style={{...addBtn,margin:0}}><Plus size={13}/>amount langsung</button></div>
         {subRow("SUB-TOTAL E",E,"#7C3AED")}</>}
 
@@ -1644,11 +1735,37 @@ tr.sales td{background:#141821;color:#fff;font-weight:800;font-size:11px;}
     </div></div>;
 }
 
-const DISCIPLINES=["CIVIL","MECHANICAL","PIPING","ELECTRICAL","INSTRUMENT"];
+let DISCIPLINES=["CIVIL","MECHANICAL","PIPING","ELECTRICAL","INSTRUMENT"];
+const DISC_PALETTE=["#4F46E5","#0D9488","#D97706","#7C3AED","#E11D48","#0284C7","#65A30D","#DB2777","#B45309","#0F766E","#6366F1","#9333EA"];
+const DISC_PALETTE_BG=["#EEF0FE","#E2F5F2","#FDF0DC","#F1EAFE","#FDE7EC","#E0F2FE","#F1F8E4","#FCE7F3","#FEF0DC","#DCFCF4","#EEF0FE","#F5EAFE"];
+const DISC_NAME={};
+const dName=d=>DISC_NAME[d]||d;
+const setDiscList=(list,colors)=>{DISCIPLINES=list;list.forEach((d,i)=>{
+  if(!DISC_COL[d])DISC_COL[d]=(colors&&colors[d])||DISC_PALETTE[i%DISC_PALETTE.length];
+  if(!DISC_BG[d])DISC_BG[d]=DISC_PALETTE_BG[i%DISC_PALETTE_BG.length];});};
 export default function App(){
   const [disc,setDisc]=useState("CIVIL");
   const [mounted,setMounted]=useState({CIVIL:true});
   const [reports,setReports]=useState({});
+  const [sp,setSp]=useState([]);
+  const [dlist,setDlist]=useState(DISCIPLINES);
+  const [mgr,setMgr]=useState(false);
+  setDiscList(dlist);
+  const renameDisc=(id,nu)=>{const name=(nu||"").trim().toUpperCase();
+    if(!name)return;
+    if(dlist.some(x=>x!==id&&dName(x)===name)){alert("Nama sudah dipakai.");return;}
+    DISC_NAME[id]=name;setDlist(l=>[...l]);};
+  const addDisc=()=>{const id="D"+Date.now().toString(36);const idx=dlist.length;
+    DISC_COL[id]=DISC_PALETTE[idx%DISC_PALETTE.length];DISC_BG[id]=DISC_PALETTE_BG[idx%DISC_PALETTE_BG.length];
+    let n=idx+1;while(dlist.some(x=>dName(x)==="DISIPLIN "+n))n++;
+    DISC_NAME[id]="DISIPLIN "+n;
+    setDlist(l=>[...l,id]);setMounted(m=>({...m,[id]:true}));setDisc(id);setMgr(true);};
+  const delDisc=(d)=>{if(dlist.length<=1)return;
+    setDlist(l=>l.filter(x=>x!==d));
+    setReports(r=>{const n={...r};delete n[d];return n;});
+    setMounted(m=>{const n={...m};delete n[d];return n;});
+    delete apis.current[d];
+    setDisc(cur=>cur===d?(dlist.filter(x=>x!==d)[0]||"resume"):cur);};
   const onReport=useCallback((d,r)=>setReports(p=>({...p,[d]:r})),[]);
   const apis=useRef({});
   const register=useCallback((key,api)=>{apis.current[key]=api;},[]);
@@ -1656,7 +1773,7 @@ export default function App(){
   const [pending,setPending]=useState(null);
   useEffect(()=>{if(!pending)return;
     const ds=pending.disciplines||{};let allDone=true;
-    DISCIPLINES.forEach(d=>{if(!ds[d])return;const a=apis.current[d];if(a)a.set(ds[d]);else allDone=false;});
+    Object.keys(ds).forEach(d=>{const a=apis.current[d];if(a)a.set(ds[d]);else allDone=false;});
     if(pending.pengesahan&&apis.current.__PENG__)apis.current.__PENG__.set(pending.pengesahan);
     if(allDone)setPending(null);
   },[pending,mounted]);
@@ -1665,22 +1782,43 @@ export default function App(){
     DISCIPLINES.forEach(d=>{const a=apis.current[d];if(a){disciplines[d]=a.get();n++;}});
     if(!n)return alert("Belum ada disiplin yang dibuka. Buka/muat RAB tiap disiplin dulu.");
     const pengesahan=apis.current.__PENG__?apis.current.__PENG__.get():null;
-    const payload={v:1,kind:"rab-all",savedAt:new Date().toISOString(),disciplines,pengesahan};
+    const colors={},names={};dlist.forEach(d=>{colors[d]=DISC_COL[d];names[d]=dName(d);});
+    const payload={v:1,kind:"rab-all",savedAt:new Date().toISOString(),discList:dlist,colors,names,disciplines,pengesahan,sp};
     const blob=new Blob([JSON.stringify(payload)],{type:"application/json"});
     const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download="RAB_ALL.json";
     document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),1500);
     alert(n+" disiplin + Pengesahan tersimpan ke RAB_ALL.json");
   };
   const loadAll=async(file)=>{try{const d=JSON.parse(await file.text());
-    if(!d.disciplines){alert("File ini bukan RAB_ALL (single json semua disiplin).");return;}
-    const ds=Object.keys(d.disciplines).filter(x=>DISCIPLINES.includes(x));
+    // --- file satu disiplin (rab_XXX.json) -> cari/buat tabnya sendiri ---
+    if(!d.disciplines){
+      if(!(d.rows||d.catalog||d.ahs)){alert("File tidak dikenali. Pilih RAB_ALL.json atau rab_<disiplin>.json.");return;}
+      const wantName=(d.discName||d.discipline||"DISIPLIN").toString().toUpperCase();
+      let id=dlist.find(x=>x===d.discipline)||dlist.find(x=>dName(x)===wantName);
+      if(!id){ id=(typeof d.discipline==="string"&&d.discipline)||("D"+Date.now().toString(36));
+        const idx=dlist.length;
+        if(!DISC_COL[id])DISC_COL[id]=DISC_PALETTE[idx%DISC_PALETTE.length];
+        if(!DISC_BG[id])DISC_BG[id]=DISC_PALETTE_BG[idx%DISC_PALETTE_BG.length];
+        DISC_NAME[id]=wantName;
+        setDlist(l=>[...l,id]);
+      }
+      setMounted(m=>({...m,[id]:true}));setDisc(id);
+      setPending({disciplines:{[id]:d}});
+      setTimeout(()=>alert("RAB "+wantName+" dimuat ke tabnya sendiri."),300);
+      return;
+    }
+    // --- file RAB_ALL (semua disiplin) ---
+    const list=Array.isArray(d.discList)&&d.discList.length?d.discList:Object.keys(d.disciplines);
+    setDiscList(list,d.colors);if(d.names)Object.assign(DISC_NAME,d.names);setDlist(list);
+    const ds=Object.keys(d.disciplines).filter(x=>list.includes(x));
     if(!ds.length){alert("Tidak ada data disiplin di file.");return;}
     setMounted(m=>{const o={...m};ds.forEach(x=>o[x]=true);return o;});
+    if(Array.isArray(d.sp))setSp(d.sp);
     setPending(d);
-    setTimeout(()=>alert(ds.length+" disiplin dimuat: "+ds.join(", ")+(d.pengesahan?" + Pengesahan":"")),300);
+    setTimeout(()=>alert(ds.length+" disiplin dimuat: "+ds.map(dName).join(", ")+(d.pengesahan?" + Pengesahan":"")),300);
   }catch(e){alert("Gagal membaca file: "+e.message);}};
   const pick=d=>{setMounted(m=>({...m,[d]:true}));setDisc(d);};
-  const CROSS=[["topall","Top All",Flame],["resume","Resume",Scale],["pengesahan","Pengesahan",CheckCircle2]];
+  const CROSS=[["topall","Top All",Flame],["resume","Resume",Scale],["sp","SP",Boxes],["pengesahan","Pengesahan",CheckCircle2]];
   const withData=Object.keys(reports).filter(d=>reports[d]&&reports[d].count>0).length;
   const grand=DISCIPLINES.reduce((t,d)=>t+((reports[d]&&reports[d].total)||0),0);
   return <div style={{"--acc":ACC_DEF,"--accbg":ACCBG_DEF,fontFamily:FB,background:"#0F1115",minHeight:"100vh",fontVariantNumeric:"tabular-nums"}}>
@@ -1693,7 +1831,9 @@ export default function App(){
         border:on?"none":"1px solid rgba(255,255,255,.10)",
         background:on?c:"rgba(255,255,255,.06)",color:on?"#fff":"rgba(255,255,255,.72)",display:"flex",gap:7,alignItems:"center"}}>
         <span style={{width:7,height:7,borderRadius:2,background:on?"rgba(255,255,255,.9)":c}}/>
-        {d}{loaded&&<span style={{width:5,height:5,borderRadius:5,background:on?"rgba(255,255,255,.75)":"rgba(34,197,94,.7)"}} title="dimuat"/>}</button>;})}
+        {dName(d)}{loaded&&<span style={{width:5,height:5,borderRadius:5,background:on?"rgba(255,255,255,.75)":"rgba(34,197,94,.7)"}} title="dimuat"/>}</button>;})}
+      <button onClick={addDisc} title="Tambah disiplin baru" style={{padding:"7px 10px",borderRadius:9,cursor:"pointer",border:"1px dashed rgba(255,255,255,.28)",background:"transparent",color:"rgba(255,255,255,.75)",fontSize:12.5,fontFamily:FB,display:"flex",alignItems:"center",gap:4}}><Plus size={13}/></button>
+      <button onClick={()=>setMgr(o=>!o)} title="Ubah nama / hapus disiplin" style={{padding:"7px 10px",borderRadius:9,cursor:"pointer",border:"1px solid rgba(255,255,255,.18)",background:mgr?"rgba(255,255,255,.14)":"transparent",color:"rgba(255,255,255,.75)",fontSize:12,fontFamily:FB}}>Kelola</button>
       <span style={{width:1,height:20,background:"rgba(255,255,255,.15)",margin:"0 4px"}}/>
       {CROSS.map(([key,lbl,Ic])=>{const on=key===disc;return <button key={key} onClick={()=>setDisc(key)}
         style={{padding:"7px 13px",borderRadius:9,cursor:"pointer",fontFamily:FB,fontWeight:on?600:500,fontSize:12.5,letterSpacing:.3,display:"flex",gap:6,alignItems:"center",
@@ -1701,10 +1841,22 @@ export default function App(){
         <Ic size={14}/>{lbl}</button>;})}
       <span style={{marginLeft:"auto",display:"flex",gap:7,alignItems:"center"}}>
         <input ref={allRef} type="file" accept=".json" style={{display:"none"}} onChange={e=>{const f=e.target.files[0];if(f)loadAll(f);e.target.value="";}}/>
-        <button onClick={()=>allRef.current&&allRef.current.click()} title="Buka 1 file JSON berisi semua disiplin + Pengesahan" style={{padding:"7px 12px",borderRadius:9,cursor:"pointer",fontFamily:FB,fontWeight:500,fontSize:12.5,display:"flex",gap:6,alignItems:"center",border:"1px solid rgba(255,255,255,.25)",background:"transparent",color:"rgba(255,255,255,.85)"}}><Upload size={14}/>Buka All</button>
+        <button onClick={()=>allRef.current&&allRef.current.click()} title="Buka RAB_ALL.json (semua disiplin) atau rab_<disiplin>.json (satu disiplin — tabnya dibuat otomatis)" style={{padding:"7px 12px",borderRadius:9,cursor:"pointer",fontFamily:FB,fontWeight:500,fontSize:12.5,display:"flex",gap:6,alignItems:"center",border:"1px solid rgba(255,255,255,.25)",background:"transparent",color:"rgba(255,255,255,.85)"}}><Upload size={14}/>Buka</button>
         <button onClick={saveAll} title="Simpan semua disiplin + Pengesahan jadi 1 file JSON" style={{padding:"7px 13px",borderRadius:9,cursor:"pointer",fontFamily:FB,fontWeight:600,fontSize:12.5,display:"flex",gap:6,alignItems:"center",border:"none",background:"#16A34A",color:"#fff"}}><Download size={14}/>Save All</button>
         <span style={{color:"rgba(255,255,255,.45)",fontSize:11,fontFamily:FM}}>{withData}/5 berisi data</span>
       </span>
+      {mgr&&<div style={{flexBasis:"100%",marginTop:9,background:"rgba(255,255,255,.05)",border:"1px solid rgba(255,255,255,.10)",borderRadius:10,padding:"10px 12px"}}>
+        <div style={{color:"rgba(255,255,255,.55)",fontSize:10.5,fontFamily:FM,textTransform:"uppercase",letterSpacing:.5,marginBottom:7}}>Kelola disiplin — ubah nama sesuai format client, tambah, atau hapus</div>
+        <div style={{display:"flex",flexWrap:"wrap",gap:8}}>
+          {dlist.map(d=><div key={d} style={{display:"flex",alignItems:"center",gap:6,background:"rgba(255,255,255,.07)",borderRadius:8,padding:"5px 7px"}}>
+            <span style={{width:9,height:9,borderRadius:2,background:DISC_COL[d]}}/>
+            <input defaultValue={dName(d)} onBlur={e=>renameDisc(d,e.target.value)} onKeyDown={e=>{if(e.key==="Enter")e.target.blur();}}
+              style={{width:130,background:"transparent",border:"1px solid rgba(255,255,255,.15)",borderRadius:6,padding:"4px 7px",color:"#fff",fontSize:12,fontFamily:FB,outline:"none"}}/>
+            <button onClick={()=>delDisc(d)} disabled={dlist.length<=1} title="Hapus disiplin" style={{border:"none",background:"transparent",cursor:dlist.length<=1?"default":"pointer",color:dlist.length<=1?"rgba(255,255,255,.2)":"#F87171",display:"flex",padding:0}}><Trash2 size={13}/></button>
+          </div>)}
+        </div>
+        <div style={{color:"rgba(255,255,255,.4)",fontSize:10.5,marginTop:8,fontFamily:FB}}>Tekan Enter atau klik di luar kolom untuk menyimpan nama baru.</div>
+      </div>}
       <div title={grand?"Porsi biaya tiap disiplin terhadap grand total":"Belum ada data disiplin"} style={{flexBasis:"100%",display:"flex",height:4,marginTop:9,borderRadius:"3px 3px 0 0",overflow:"hidden",background:"rgba(255,255,255,.07)"}}>
         {grand>0?DISCIPLINES.map(d=>{const v=(reports[d]&&reports[d].total)||0;if(!v)return null;
           return <div key={d} title={d+" · "+(v/grand*100).toFixed(1)+"%"} style={{width:(v/grand*100)+"%",background:DISC_COL[d],opacity:disc===d?1:.55}}/>;})
@@ -1714,6 +1866,7 @@ export default function App(){
     {DISCIPLINES.filter(d=>mounted[d]).map(d=><Studio key={d} discipline={d} hidden={d!==disc} onReport={onReport} register={register}/>)}
     {disc==="topall"&&<TopAllView reports={reports}/>}
     {disc==="resume"&&<ResumeView reports={reports}/>}
-    <PengesahanView reports={reports} hidden={disc!=="pengesahan"} register={register}/>
+    <SPView sp={sp} setSp={setSp} hidden={disc!=="sp"}/>
+    <PengesahanView reports={reports} hidden={disc!=="pengesahan"} register={register} sp={sp}/>
   </div>;
 }
