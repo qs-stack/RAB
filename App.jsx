@@ -314,17 +314,17 @@ function Studio({discipline,hidden,onReport}){
     let codes=[...new Set(itemRows.filter(r=>r.code!=null).map(r=>r.code))].filter(c=>catByCode[c]);
     if(!codes.length)codes=Object.keys(ahs).map(Number).filter(c=>catByCode[c]);
     codes.sort((a,b)=>a-b);
-    const d=[["kode ahs","klasifikasi SD","item ahs","satuan","koef SD"]];
-    codes.forEach(c=>{const cb=catByCode[c]||{};d.push([c,"",cb.n||names[c]||"",cb.u||"",""]);
-      (ahs[c]||[]).forEach(cp=>{const m=meta[cp.rc]||{};d.push(["",KLAS_LBL[m.cat]||"",m.n||"",m.u||"",cp.q!=null?cp.q:""]);});});
-    const ws=XLSX.utils.aoa_to_sheet(d);ws["!cols"]=[{wch:10},{wch:14},{wch:52},{wch:10},{wch:10}];
+    const d=[["kode ahs","klasifikasi SD","item ahs","satuan","koef SD","unit rate SD","keterangan"]];
+    codes.forEach(c=>{const cb=catByCode[c]||{};d.push([c,"",cb.n||names[c]||"",cb.u||"","","",""]);
+      (ahs[c]||[]).forEach(cp=>{const m=meta[cp.rc]||{};d.push(["",KLAS_LBL[m.cat]||"",m.n||"",m.u||"",cp.q!=null?cp.q:"",prices[cp.rc]!=null?prices[cp.rc]:0,refs[cp.rc]||""]);});});
+    const ws=XLSX.utils.aoa_to_sheet(d);ws["!cols"]=[{wch:10},{wch:14},{wch:52},{wch:10},{wch:10},{wch:15},{wch:30}];
     const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,"AHS");XLSX.writeFile(wb,"AHS_breakdown_"+discipline+".xlsx");}
   function importAHS(file){const fr=new FileReader();fr.onload=e=>{try{
     const isCsv=/\.csv$/i.test(file.name);const wb=XLSX.read(e.target.result,{type:isCsv?"binary":"array"});
     const A=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{header:1,defval:null});
-    const need={kode:["kode ahs","kode_ahs","kodeahs","kode analisa","kode"],klas:["klasifikasi sd","klasifikasi","klas","kelompok","jenis"],item:["item ahs","item","sumber daya","nama","uraian"],unit:["satuan","unit"],koef:["koef sd","koef","koefisien","coef","qty"]};
-    const h=findHdr(A,need);if(!h){alert("Header tidak ketemu. Kolom: kode ahs, klasifikasi SD, item ahs, satuan, koef SD.");return;}
-    const {idx}=h;const nAhs={},nNames={},catUp={},nMeta={},nPrices={};let cur=null,ci=0,nA=0,nS=0;
+    const need={kode:["kode ahs","kode_ahs","kodeahs","kode analisa","kode"],klas:["klasifikasi sd","klasifikasi","klas","kelompok","jenis"],item:["item ahs","item","sumber daya","nama","uraian"],unit:["satuan","unit"],koef:["koef sd","koef","koefisien","coef"],harga:["unit rate sd","unit rate","harga satuan","harga"],ket:["keterangan","sumber","ref","catatan"]};
+    const h=findHdr(A,need);if(!h){alert("Header tidak ketemu. Kolom: kode ahs, klasifikasi SD, item ahs, satuan, koef SD, unit rate SD, keterangan.");return;}
+    const {idx}=h;const nAhs={},nNames={},catUp={},nMeta={},nPrices={},nRefs={};let cur=null,ci=0,nA=0,nS=0,nP=0;
     const usedAuto=new Set([...Object.keys(names),...catalog.map(c=>String(c.c))].map(x=>Number(x)).filter(x=>x>=AUTO_BASE));let seq=AUTO_BASE;
     const nextAhs=()=>{do{seq++;}while(usedAuto.has(seq));usedAuto.add(seq);return seq;};
     for(let i=h.row+1;i<A.length;i++){const r=A[i]||[];
@@ -337,12 +337,16 @@ function Studio({discipline,hidden,onReport}){
       const klas=idx.klas>=0&&r[idx.klas]!=null?String(r[idx.klas]).trim().toLowerCase():"";
       const kv=KLAS_MAP[klas];const hasKoef=koefRaw!=null&&String(koefRaw).trim()!=="";
       if(cur!=null&&kv&&hasKoef){ci++;const[cat,pfx]=kv;const rc=pfx+cur+"-"+String(ci).padStart(2,"0");
-        nMeta[rc]={n:item,u:unit,cat};if(prices[rc]==null)nPrices[rc]=0;nAhs[cur].push({rc,q:parseNum(koefRaw,true)});nS++;}
+        nMeta[rc]={n:item,u:unit,cat};
+        const hRaw=idx.harga>=0?r[idx.harga]:null;const hasH=hRaw!=null&&String(hRaw).trim()!=="";
+        if(hasH){nPrices[rc]=parseNum(hRaw,true);nP++;}else if(prices[rc]==null)nPrices[rc]=0;
+        const kRaw=idx.ket>=0&&r[idx.ket]!=null?String(r[idx.ket]).trim():"";if(kRaw)nRefs[rc]=kRaw;
+        nAhs[cur].push({rc,q:parseNum(koefRaw,true)});nS++;}
     }
     if(!nA){alert("Tidak ada baris AHS terbaca (kolom 'kode ahs' kosong semua).");return;}
     setCatalog(c=>{const map=new Map(c.map(x=>[x.c,x]));Object.keys(catUp).forEach(cs=>{const code=+cs,{n,u}=catUp[code];map.set(code,map.has(code)?{...map.get(code),n,u}:{c:code,e:"AHS",sec:"IMPORT AHS",n,u});});return [...map.values()];});
-    setNames(n=>({...n,...nNames}));setMeta(m=>({...m,...nMeta}));setPrices(p=>({...p,...nPrices}));setAhs(a=>({...a,...nAhs}));
-    setTimeout(()=>alert(nA+" AHS & "+nS+" sumber daya ter-generate. Isi harga lewat Export/Upload SBDY di tab SBDY."),50);
+    setNames(n=>({...n,...nNames}));setMeta(m=>({...m,...nMeta}));setPrices(p=>({...p,...nPrices}));setRefs(rf=>({...rf,...nRefs}));setAhs(a=>({...a,...nAhs}));
+    setTimeout(()=>alert(nA+" AHS & "+nS+" sumber daya ter-generate"+(nP?", "+nP+" harga terisi (cek tab SBDY)":". Isi harga lewat Export/Upload SBDY di tab SBDY.")),50);
   }catch(err){alert("Gagal baca: "+err.message);}};if(/\.csv$/i.test(file.name))fr.readAsBinaryString(file);else fr.readAsArrayBuffer(file);}
 
   const priced=rows.map(r=>{const rt=r.code!=null?projRates[r.code]:null;const v=parseFloat(r.vol);
@@ -583,7 +587,7 @@ function AhsTab({itemRows,ahs,addc,meta,prices,rates,names,catByCode,ovr,setOver
     <input ref={ahsImpRef} type="file" accept=".xlsx,.xlsm,.csv" style={{display:"none"}} onChange={e=>{const f=e.target.files[0];if(f)importAHS(f);e.target.value="";}}/>
     <button className="btn" onClick={exportAHS} title="Unduh kerangka AHS (per item BOQ) untuk diisi breakdown SBDY di Excel" style={{padding:"8px 13px",fontSize:12.5,display:"flex",gap:6,alignItems:"center",color:COL.ink}}><Download size={14}/>Export AHS</button>
     <button className="btn" onClick={()=>ahsImpRef.current.click()} title="Upload AHS yang sudah diisi SBDY — kode & sumber daya auto ter-generate" style={{padding:"8px 14px",fontSize:12.5,display:"flex",gap:6,alignItems:"center",background:COL.steel,color:"#fff",borderColor:COL.steel}}><Upload size={14}/>Import AHS (isi SBDY)</button>
-    <span style={{fontSize:11.5,color:COL.sub,fontFamily:FM}}>Excel: kode ahs · klasifikasi SD (material/upah/alat/subkon) · item ahs · satuan · koef SD</span>
+    <span style={{fontSize:11.5,color:COL.sub,fontFamily:FM}}>Excel: kode ahs · klasifikasi SD · item ahs · satuan · koef SD · unit rate SD · keterangan</span>
   </div>;
   const usage=useMemo(()=>{const m={};itemRows.forEach(r=>{if(r.code==null)return;const v=parseFloat(r.vol);if(isNaN(v))return;if(!m[r.code])m[r.code]={vol:0,n:0};m[r.code].vol+=v;m[r.code].n++;});return m;},[itemRows]);
   const used=useMemo(()=>Object.keys(usage).map(Number).filter(c=>ahs[c]||addc[c]).sort((a,b)=>((rates[b]?.ur||0)*usage[b].vol)-((rates[a]?.ur||0)*usage[a].vol)),[usage,ahs,addc,rates]);
