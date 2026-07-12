@@ -402,43 +402,61 @@ function Studio({discipline,hidden,onReport,register}){
 
     // ---------- SHEET SBDY ----------
     const sbCodes=Object.keys(meta).sort();
-    const sbHead=["KODE SD","SUMBER DAYA","UNIT","KATEGORI","HARGA","KETERANGAN"];
+    const sbHead=["KODE SD","SUMBER DAYA","UNIT","KATEGORI","VOLUME","HARGA","SUBTOTAL","KETERANGAN"];
     const wsS={};sbHead.forEach((h,c)=>put(wsS,XLSXS.utils.encode_cell({r:0,c}),{t:"s",v:h,s:sHead(DARK)}));
-    sbCodes.forEach((rc,i)=>{const r=i+1,m=meta[rc]||{};
-      const row=[[rc,"s",sCell()],[m.n||"","s",sCell()],[m.u||"","s",sCell("center")],[CATLBL[m.cat]||"","s",sCell("center")],[prices[rc]!=null?prices[rc]:0,"n",sNum()],[refs[rc]||"","s",sCell()]];
-      row.forEach((cell,c)=>put(wsS,XLSXS.utils.encode_cell({r,c}),{t:cell[1],v:cell[0],s:cell[2]}));});
-    range(wsS,sbCodes.length+1,6);
-    wsS["!cols"]=[{wch:14},{wch:44},{wch:9},{wch:12},{wch:15},{wch:30}];
+    sbCodes.forEach((rc,i)=>{const R=i+2,m=meta[rc]||{};
+      put(wsS,"A"+R,{t:"s",v:rc,s:sCell()});
+      put(wsS,"B"+R,{t:"s",v:m.n||"",s:sCell()});
+      put(wsS,"C"+R,{t:"s",v:m.u||"",s:sCell("center")});
+      put(wsS,"D"+R,{t:"s",v:CATLBL[m.cat]||"",s:sCell("center")});
+      put(wsS,"E"+R,{t:"n",f:`SUMIF(AHS!$B:$B,A${R},AHS!$G:$G)`,s:{numFmt:"#,##0.0000",alignment:{horizontal:"right"},border:bd}});
+      put(wsS,"F"+R,{t:"n",v:prices[rc]!=null?prices[rc]:0,s:sNum()});
+      put(wsS,"G"+R,{t:"n",f:`E${R}*F${R}`,s:sNum()});
+      put(wsS,"H"+R,{t:"s",v:refs[rc]||"",s:sCell()});});
+    const sTR=sbCodes.length+2;
+    ["A","B","C","D","E","F","H"].forEach(c=>put(wsS,c+sTR,{t:"s",v:c==="B"?"TOTAL SBDY":"",s:{fill:{fgColor:{rgb:AMB}},font:{bold:true},border:bd}}));
+    put(wsS,"G"+sTR,sbCodes.length?{t:"n",f:`SUM(G2:G${sbCodes.length+1})`,s:{fill:{fgColor:{rgb:AMB}},font:{bold:true},numFmt:"#,##0.00",alignment:{horizontal:"right"},border:bd}}:{t:"n",v:0,s:sNum(true)});
+    range(wsS,sTR,8);
+    wsS["!cols"]=[{wch:14},{wch:42},{wch:9},{wch:12},{wch:13},{wch:15},{wch:17},{wch:26}];
 
     // ---------- SHEET AHS ----------
     let codes=[...new Set(itemRows.filter(r=>r.code!=null).map(r=>r.code))];
     if(!codes.length)codes=Object.keys(ahs).map(Number);
     codes=codes.filter(c=>ahs[c]||catByCode[c]).sort((a,b)=>a-b);
-    const aHead=["KODE AHS","KLASIFIKASI SD","ITEM AHS","SATUAN","KOEF SD","KODE SD","UNIT RATE SD","SUBTOTAL"];
+    const aHead=["KODE AHS","KODE SD","KLASIFIKASI SD","ITEM AHS","SATUAN","KOEF SD","VOLUME","UNIT RATE SD","SUBTOTAL"];
     const wsA={};aHead.forEach((h,c)=>put(wsA,XLSXS.utils.encode_cell({r:0,c}),{t:"s",v:h,s:sHead(DARK)}));
-    let r=1;
+    let r=1;const hdrRows=[];
     codes.forEach(code=>{
       const comps=(ahs[code]||[]).concat(addc[code]||[]);
-      const hdrRow=r;const cb=catByCode[code]||{};
-      [[code,"n",sGrp()],["","s",sGrp()],[cb.n||names[code]||"","s",sGrp()],[cb.u||"","s",sGrp()],["","s",sGrp()],["","s",sGrp()],["","s",sGrp()],[0,"n",sGrpN()]]
-        .forEach((cell,c)=>put(wsA,XLSXS.utils.encode_cell({r:hdrRow,c}),{t:cell[1],v:cell[0],s:cell[2]}));
+      const HR=r+1;hdrRows.push(HR);const cb=catByCode[code]||{};
+      put(wsA,"A"+HR,{t:"n",v:code,s:sGrp()});
+      put(wsA,"B"+HR,{t:"s",v:"",s:sGrp()});
+      put(wsA,"C"+HR,{t:"s",v:"",s:sGrp()});
+      put(wsA,"D"+HR,{t:"s",v:cb.n||names[code]||"",s:sGrp()});
+      put(wsA,"E"+HR,{t:"s",v:cb.u||"",s:{fill:{fgColor:{rgb:IND}},font:{bold:true},alignment:{horizontal:"center"},border:bd}});
+      put(wsA,"F"+HR,{t:"s",v:"",s:sGrp()});
+      put(wsA,"G"+HR,{t:"n",f:`IFERROR(VLOOKUP(A${HR},BOQ!$A:$F,4,FALSE),0)`,s:{fill:{fgColor:{rgb:IND}},font:{bold:true},numFmt:"#,##0.0000",alignment:{horizontal:"right"},border:bd}});
+      put(wsA,"H"+HR,{t:"n",f:`IFERROR(I${HR}/G${HR},0)`,s:sGrpN()});
       r++;const first=r+1;
-      comps.forEach((cp,i)=>{const m=meta[cp.rc]||{};const q=effQ(code,i,cp.q||0);const R=r+1; // excel 1-based
+      comps.forEach((cp,i)=>{const q=effQ(code,i,cp.q||0);const m=meta[cp.rc]||{};const R=r+1;
         put(wsA,"A"+R,{t:"s",v:"",s:sCell()});
-        put(wsA,"B"+R,{t:"s",v:KLAS_LBL[m.cat]||"",s:sCell()});
-        put(wsA,"C"+R,{t:"s",v:m.n||"",s:sCell()});
-        put(wsA,"D"+R,{t:"s",v:m.u||"",s:sCell("center")});
-        put(wsA,"E"+R,{t:"n",v:q,s:{numFmt:"#,##0.0000",alignment:{horizontal:"right"},border:bd}});
-        put(wsA,"F"+R,{t:"s",v:cp.rc,s:sCell()});
-        put(wsA,"G"+R,{t:"n",f:`IFERROR(VLOOKUP(F${R},SBDY!$A:$E,5,FALSE),0)`,s:sNum()});
-        put(wsA,"H"+R,{t:"n",f:`E${R}*G${R}`,s:sNum()});
+        put(wsA,"B"+R,{t:"s",v:cp.rc,s:sCell()});
+        put(wsA,"C"+R,{t:"s",v:KLAS_LBL[m.cat]||"",s:sCell()});
+        put(wsA,"D"+R,{t:"s",f:`IFERROR(VLOOKUP(B${R},SBDY!$A:$H,2,FALSE),"")`,s:sCell()});
+        put(wsA,"E"+R,{t:"s",f:`IFERROR(VLOOKUP(B${R},SBDY!$A:$H,3,FALSE),"")`,s:sCell("center")});
+        put(wsA,"F"+R,{t:"n",v:q,s:{numFmt:"#,##0.0000",alignment:{horizontal:"right"},border:bd}});
+        put(wsA,"G"+R,{t:"n",f:`F${R}*$G$${HR}`,s:{numFmt:"#,##0.0000",alignment:{horizontal:"right"},border:bd}});
+        put(wsA,"H"+R,{t:"n",f:`IFERROR(VLOOKUP(B${R},SBDY!$A:$H,6,FALSE),0)`,s:sNum()});
+        put(wsA,"I"+R,{t:"n",f:`H${R}*G${R}`,s:sNum()});
         r++;});
       const last=r;
-      const HR=hdrRow+1;
-      put(wsA,"H"+HR,comps.length?{t:"n",f:`SUM(H${first}:H${last})`,s:sGrpN()}:{t:"n",v:0,s:sGrpN()});
+      put(wsA,"I"+HR,comps.length?{t:"n",f:`SUM(I${first}:I${last})`,s:sGrpN()}:{t:"n",v:0,s:sGrpN()});
     });
-    range(wsA,r,8);
-    wsA["!cols"]=[{wch:11},{wch:14},{wch:46},{wch:9},{wch:10},{wch:14},{wch:15},{wch:16}];
+    const aTR=r+1;
+    ["A","B","C","D","E","F","G","H"].forEach(c=>put(wsA,c+aTR,{t:"s",v:c==="D"?"TOTAL AHS":"",s:{fill:{fgColor:{rgb:AMB}},font:{bold:true},border:bd}}));
+    put(wsA,"I"+aTR,hdrRows.length?{t:"n",f:hdrRows.map(h=>"I"+h).join("+"),s:{fill:{fgColor:{rgb:AMB}},font:{bold:true},numFmt:"#,##0.00",alignment:{horizontal:"right"},border:bd}}:{t:"n",v:0,s:sNum(true)});
+    range(wsA,aTR,9);
+    wsA["!cols"]=[{wch:11},{wch:14},{wch:14},{wch:44},{wch:9},{wch:10},{wch:13},{wch:15},{wch:17}];
 
     // ---------- SHEET BOQ ----------
     const bHead=["KODE","ITEM PEKERJAAN","UNIT","VOLUME","UNIT RATE","AMOUNT"];
@@ -449,10 +467,10 @@ function Studio({discipline,hidden,onReport,register}){
       put(wsB,"B"+R,{t:"s",v:x.item,s:sCell()});
       put(wsB,"C"+R,{t:"s",v:x.unit||"",s:sCell("center")});
       put(wsB,"D"+R,{t:"n",v:parseFloat(x.vol)||0,s:{numFmt:"#,##0.00",alignment:{horizontal:"right"},border:bd}});
-      put(wsB,"E"+R,{t:"n",f:`IFERROR(VLOOKUP(A${R},AHS!$A:$H,8,FALSE),0)`,s:sNum()});
+      put(wsB,"E"+R,{t:"n",f:`IFERROR(VLOOKUP(A${R},AHS!$A:$I,8,FALSE),0)`,s:sNum()});
       put(wsB,"F"+R,{t:"n",f:`D${R}*E${R}`,s:sNum()});});
     const TR=items.length+2;
-    [["A",""],["B","TOTAL"],["C",""],["D",""],["E",""]].forEach(([c,v])=>put(wsB,c+TR,{t:"s",v,s:{fill:{fgColor:{rgb:AMB}},font:{bold:true},border:bd}}));
+    [["A",""],["B","TOTAL BOQ"],["C",""],["D",""],["E",""]].forEach(([c,v])=>put(wsB,c+TR,{t:"s",v,s:{fill:{fgColor:{rgb:AMB}},font:{bold:true},border:bd}}));
     put(wsB,"F"+TR,items.length?{t:"n",f:`SUM(F2:F${items.length+1})`,s:{fill:{fgColor:{rgb:AMB}},font:{bold:true},numFmt:"#,##0.00",alignment:{horizontal:"right"},border:bd}}:{t:"n",v:0,s:sNum(true)});
     range(wsB,TR,6);
     wsB["!cols"]=[{wch:10},{wch:52},{wch:9},{wch:12},{wch:16},{wch:18}];
