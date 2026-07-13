@@ -105,7 +105,6 @@ function Studio({discipline,hidden,onReport,register}){
   const [rows,setRows]=useState([]);
   const [tab,setTab]=useState("boq");
   const [catSrc,setCatSrc]=useState("Belum ada master — kosong");
-  const masterRef=useRef();
 
   const catByCode=useMemo(()=>{const m={};catalog.forEach(c=>m[c.c]=c);return m;},[catalog]);
   const effQ=(code,i,q)=>(ovr[code]&&ovr[code][i]!=null)?ovr[code][i]:q;   // effective (project) coefficient
@@ -264,25 +263,6 @@ function Studio({discipline,hidden,onReport,register}){
   function loadProject(file){const fr=new FileReader();fr.onload=e=>{try{applyProject(JSON.parse(e.target.result));
   }catch(err){alert("File project tidak valid: "+err.message);}};fr.readAsText(file);}
 
-  function readMaster(file){const fr=new FileReader();fr.onload=e=>{try{
-    const wb=XLSX.read(e.target.result,{type:"array"});
-    const gB=n=>wb.Sheets[n]?XLSX.utils.sheet_to_json(wb.Sheets[n],{header:1,defval:null}):null;
-    const B=gB("BOQ"),S=gB("SBDY"),H=gB("AHS");
-    if(!B||!S||!H){alert("File harus punya sheet BOQ, AHS, dan SBDY.");return;}
-    const ncat=[];let sec="";
-    for(const r of B){const a=r[0],b=r[1],d=r[3];if(a!=null&&b==null&&d){sec=String(d).replace(/\n/g," ").trim();continue;}
-      const code=parseInt(b);if(isNaN(code))continue;ncat.push({c:code,e:r[2]?String(r[2]):"",sec,n:(d?String(d):"").replace(/\n/g," ").trim().slice(0,80),u:r[5]?String(r[5]).trim():""});}
-    const nmeta={},npr={};
-    for(const r of S){const x=r[23];if(!(typeof x==="string"&&x.length>=4&&/\d/.test(x)))continue;if(nmeta[x])continue;
-      const tag=String(r[27]||"").trim().toUpperCase();const cat=TAG[tag]||PREF[x[0]]||"m";
-      nmeta[x]={n:r[24]?String(r[24]).replace(/\n/g," ").trim().slice(0,60):"",u:r[25]?String(r[25]).trim():"",cat};npr[x]=+r[26]||0;}
-    const nahs={},nnames={};let cur=null;
-    for(const r of H){const code=parseInt(r[1]);if(!isNaN(code)){cur=code;nahs[cur]=[];nnames[cur]=r[3]?String(r[3]).replace(/\n/g," ").trim().slice(0,70):"";continue;}
-      const c=r[2];if(cur!=null&&typeof c==="string"&&nmeta[c])nahs[cur].push({rc:c,q:+r[10]||0});}
-    const ref=new Set();Object.values(nahs).forEach(a=>a.forEach(c=>ref.add(c.rc)));
-    const fmeta={},fpr={};for(const k in nmeta){if(ref.has(k)||npr[k]>0){fmeta[k]=nmeta[k];fpr[k]=npr[k];}}
-    setCatalog(ncat);setMeta(fmeta);setPrices(fpr);setAhs(nahs);setNames(nnames);setCatSrc(file.name);
-  }catch(err){alert("Gagal baca: "+err.message);}};fr.readAsArrayBuffer(file);}
 
   // ---- find header row helper: picks the row matching the most expected columns ----
   function findHdr(A,need){let best=null,bestScore=0;for(let i=0;i<Math.min(A.length,25);i++){const cells=(A[i]||[]).map(x=>x==null?"":String(x).toLowerCase());
@@ -634,8 +614,6 @@ function Studio({discipline,hidden,onReport,register}){
           <div style={{color:COL.sub,fontSize:13.5,lineHeight:1.5}}>Platform terintegrasi yang mempermudah perhitungan, pengelolaan, dan penyusunan Rencana Anggaran Biaya (RAB) proyek secara cepat, akurat, dan efisien.</div>
         </div>
         <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
-          <button className="btn" style={{padding:"9px 13px",display:"flex",gap:7,alignItems:"center",fontSize:12.5,color:COL.sub}} onClick={()=>masterRef.current.click()}><Upload size={15}/>Master</button>
-          <input ref={masterRef} type="file" accept=".xlsx,.xlsm" style={{display:"none"}} onChange={e=>{const f=e.target.files[0];if(f)readMaster(f);e.target.value="";}}/>
           <button className="btn" style={{padding:"9px 13px",display:"flex",gap:7,alignItems:"center",fontSize:12.5,color:COL.sub}} onClick={()=>projRef.current.click()}>Buka</button>
           <input ref={projRef} type="file" accept=".json" style={{display:"none"}} onChange={e=>{const f=e.target.files[0];if(f)loadProject(f);e.target.value="";}}/>
           <button className="btn" style={{padding:"9px 13px",display:"flex",gap:7,alignItems:"center",fontSize:12.5,color:COL.sub}} onClick={saveProject}>Simpan</button>
@@ -644,8 +622,7 @@ function Studio({discipline,hidden,onReport,register}){
         </div>
       </div>
       <div style={{display:"flex",gap:10,alignItems:"center",fontSize:12,color:COL.sub,marginBottom:18,flexWrap:"wrap"}}>
-        <FileSpreadsheet size={14} color={COL.steel}/><span>{catSrc}</span>
-        <span style={{width:3,height:3,borderRadius:3,background:COL.sub,opacity:.5}}/><span><b style={{fontFamily:FM,color:COL.ink}}>{catalog.length}</b> item</span>
+        <FileSpreadsheet size={14} color={COL.steel}/><span><b style={{fontFamily:FM,color:COL.ink}}>{catalog.length}</b> item</span>
         <span style={{width:3,height:3,borderRadius:3,background:COL.sub,opacity:.5}}/><span><b style={{fontFamily:FM,color:COL.ink}}>{Object.keys(meta).length}</b> sumber daya</span>
       </div>
 
@@ -1392,7 +1369,7 @@ function ResumeView({reports}){
 }
 
 /* ---------- LEMBAR PENGESAHAN (finalisasi ke manajemen) ---------- */
-const PA_DEF=[["SURVEYING WORKS","Ls",1,200000000],["PERMIT","Ls",1,1000000000],["MOB-DEMOB","Ls",1,2000000000],["SITE FACILITIES","Ls",1,3000000000],["MESS PEKERJA","Ls",1,1000000000],["DEWATERING","Ls",1,500000000],["SUPPORT EQUIPMENT","Ls",1,5000000000],["ELECTRICITY","Ls",1,3000000000],["WATER CONSUMPTION","Ls",1,200000000],["SCAFFOLDING","Ls",1,200000000],["TOOLS","Ls",1,100000000],["QC TEST","Ls",1,100000000]];
+const PA_DEF=[];   // Bagian A dikosongkan: isi lewat tab SP atau tambah manual
 const PC_DEF=[["Indirect Cost (gaji, overhead, dll)","Month",24,1000000000],["Warranty Cost","Month",12,100000000]];
 const PD_DEF=[["Risiko Teknis",0.005],["Risiko Inflasi",0],["Risiko LD",0],["Risiko Kurs",0],["Risiko Contingency",0]];
 const PE_DEF=[["Provision Bond","pct",0.006,0],["Asuransi (CAR & BPJSTK)","pct",0.004,0],["QA & HSE Cost","pct",0.005,0],["Development Cost","pct",0,0],["Biaya Sosial","pct",0,0],["Spare for Negotiation","pct",0,0],["PPh Final pasal 23","pct",0.0265,0]];
